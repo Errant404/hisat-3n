@@ -219,7 +219,8 @@ HISAT2_BIN_LIST_AUX = hisat2-build-s-debug \
 	hisat2-align-l-debug \
 	hisat2-inspect-s-debug \
 	hisat2-inspect-l-debug \
-	hisat2-repeat-debug
+	hisat2-repeat-debug \
+	hisat-3n-table-debug
 
 HT2LIB_SRCS = $(SHARED_CPPS) \
               $(HT2LIB_CPPS)
@@ -308,27 +309,6 @@ DEFS :=-fno-strict-aliasing \
      $(PREF_DEF) \
      $(MM_DEF) \
      $(SHMEM_DEF)
-
-#
-# hisat-bp targets
-#
-
-hisat-bp-bin: hisat_bp.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
-	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(EXTRA_FLAGS) \
-	$(DEFS) -DBOWTIE2 $(NOASSERT_FLAGS) -Wall \
-	$(INC) \
-	-o $@ $< \
-	$(SHARED_CPPS) $(HISAT_CPPS_MAIN) \
-	$(LIBS) $(SEARCH_LIBS)
-
-hisat-bp-bin-debug: hisat_bp.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
-	$(CXX) $(DEBUG_FLAGS) \
-	$(DEBUG_DEFS) $(EXTRA_FLAGS) \
-	$(DEFS) -DBOWTIE2 -Wall \
-	$(INC) \
-	-o $@ $< \
-	$(SHARED_CPPS) $(HISAT_CPPS_MAIN) \
-	$(LIBS) $(SEARCH_LIBS)
 
 #
 # hisat2-repeat targets
@@ -471,6 +451,9 @@ hisat2-inspect-l-debug: hisat2_inspect.cpp $(HEADERS) $(SHARED_CPPS)
 
 hisat-3n-table: hisat_3n_table.cpp $(THREE_N_HEADERS)
 	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(EXTRA_FLAGS) $(NOASSERT_FLAGS) $(DEFS) -pthread -o $@ $<
+
+hisat-3n-table-debug: hisat_3n_table.cpp $(THREE_N_HEADERS)
+	$(CXX) $(DEBUG_FLAGS) $(DEBUG_DEFS) $(EXTRA_FLAGS) $(NOASSERT_FLAGS) $(DEFS) -pthread -o $@ $<
 
 #
 # HT2LIB targets
