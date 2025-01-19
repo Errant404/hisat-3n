@@ -310,27 +310,6 @@ DEFS :=-fno-strict-aliasing \
      $(SHMEM_DEF)
 
 #
-# hisat-bp targets
-#
-
-hisat-bp-bin: hisat_bp.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
-	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(EXTRA_FLAGS) \
-	$(DEFS) -DBOWTIE2 $(NOASSERT_FLAGS) -Wall \
-	$(INC) \
-	-o $@ $< \
-	$(SHARED_CPPS) $(HISAT_CPPS_MAIN) \
-	$(LIBS) $(SEARCH_LIBS)
-
-hisat-bp-bin-debug: hisat_bp.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
-	$(CXX) $(DEBUG_FLAGS) \
-	$(DEBUG_DEFS) $(EXTRA_FLAGS) \
-	$(DEFS) -DBOWTIE2 -Wall \
-	$(INC) \
-	-o $@ $< \
-	$(SHARED_CPPS) $(HISAT_CPPS_MAIN) \
-	$(LIBS) $(SEARCH_LIBS)
-
-#
 # hisat2-repeat targets
 #
 

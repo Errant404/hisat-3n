@@ -20,6 +20,7 @@
 #ifndef POSITION_3N_TABLE_H
 #define POSITION_3N_TABLE_H
 
+#include <iostream>
 #include <string>
 #include <vector>
 #include <fstream>

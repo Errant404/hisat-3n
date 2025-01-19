@@ -20,9 +20,12 @@
 #ifndef UTILITY_3N_TABLE_H
 #define UTILITY_3N_TABLE_H
 
+#include <cassert>
+#include <iostream>
 #include <mutex>
 #include <queue>
 #include <algorithm>
+#include <string>
 
 using namespace std;
 
