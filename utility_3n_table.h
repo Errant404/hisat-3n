@@ -20,9 +20,13 @@
 #ifndef UTILITY_3N_TABLE_H
 #define UTILITY_3N_TABLE_H
 
+#include <cassert>
+#include <iostream>
 #include <mutex>
 #include <queue>
 #include <algorithm>
+#include <string>
+#include "blockingconcurrentqueue.h"
 
 using namespace std;
 
@@ -194,15 +198,6 @@ private:
     mutex mutex_;
     queue<T> queue_;
 
-    string getReadName(string* line){
-        int startPosition = 0;
-        int endPosition;
-
-        endPosition = line->find("\t", startPosition);
-        string readName = line->substr(startPosition, endPosition - startPosition);
-        return readName;
-    }
-
 public:
     void pop() {
         mutex_.lock();
@@ -251,6 +246,35 @@ public:
         mutex_.unlock();
         return check;
     }
+};
+
+template <typename T>
+class ConcurrentQueue : public moodycamel::BlockingConcurrentQueue<T> {
+public:
+    void push(T value) {
+        counter++;
+        this->enqueue(value);
+    }
+    bool popFront(T& value) {
+        if (this->try_dequeue(value)) {
+            counter--;
+            return true;
+        } else {
+            return false;
+        }
+    }
+    void blockingPopFront(T& value) {
+        this->wait_dequeue(value);
+        counter--;
+    }
+    size_t size() {
+        return counter;
+    }
+    bool empty() {
+        return counter == 0;
+    }
+private:
+    atomic<size_t> counter {0};
 };
 
 /**

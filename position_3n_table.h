@@ -191,12 +191,11 @@ public:
     string chromosome; // current reference chromosome name.
     long long int location; // current location (position) in reference chromosome.
     char lastBase = 'X'; // the last base of reference line. this is for CG_only mode.
-    SafeQueue<string*> linePool; // pool to store unprocessed SAM line.
-    SafeQueue<string*> freeLinePool; // pool to store free string pointer for SAM line.
+    ConcurrentQueue<string*> linePool; // pool to store unprocessed SAM line.
+    ConcurrentQueue<string*> freeLinePool; // pool to store free string pointer for SAM line.
     SafeQueue<Position*> freePositionPool; // pool to store free position pointer for reference position.
     SafeQueue<Position*> outputPositionPool; // pool to store the reference position which is loaded and ready to output.
     bool working;
-    mutex mutex_;
     long long int refCoveredPosition; // this is the last position in reference chromosome we loaded in refPositions.
     ifstream refFile;
     vector<mutex*> workerLock; // one lock for one worker thread.
@@ -344,7 +343,7 @@ public:
                           << to_string(pos->unconvertedQualities.size()) << '\n';
                 returnPosition(pos);
             } else {
-                this_thread::sleep_for (std::chrono::microseconds(1));
+                // this_thread::sleep_for (std::chrono::microseconds(1));
             }
         }
         tableFile.close();
@@ -495,7 +494,7 @@ public:
      */
     void getFreePosition(Position*& newPosition) {
         while (outputPositionPool.size() >= 10000) {
-            this_thread::sleep_for (std::chrono::microseconds(1));
+            // this_thread::sleep_for (std::chrono::microseconds(1));
         }
         if (freePositionPool.popFront(newPosition)) {
             return;
@@ -532,11 +531,12 @@ public:
             workerLock[threadID]->lock();
             if(!linePool.popFront(line)) {
                 workerLock[threadID]->unlock();
-                this_thread::sleep_for (std::chrono::nanoseconds(1));
+                // linePool.blockingPopFront(line);
+                // this_thread::sleep_for (std::chrono::nanoseconds(1));
                 continue;
             }
             while (refPositions.empty()) {
-                this_thread::sleep_for (std::chrono::microseconds(1));
+                // this_thread::sleep_for (std::chrono::microseconds(1));
             }
             newAlignment.parse(line);
             returnLine(line);
