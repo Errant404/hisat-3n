@@ -1,3 +1,4 @@
+*-debug
 *.bt2l
 *.dSYM
 *.ht2
@@ -5,10 +6,10 @@
 *.swp
 *.zip
 .idea
-.vscode
 .project
 .run.pl.child.*
 .simple_tests*
+.vscode
 Xcode
 build
 cmake-build-*

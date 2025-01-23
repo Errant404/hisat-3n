@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(hisat-3n)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
 # escape preprocessor definition 
 cmake_policy(SET CMP0005 NEW)
@@ -16,6 +17,8 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_VERBOSE_MAKEFILE true)
 set(CMAKE_EXPORT_COMPILE_COMMANDS on)
 set(NCBI_NGS_DIR ${NCBI_NGS_DIR})
+
+find_package(TBB REQUIRED)
 
 # Common Flag
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall -msse2")
@@ -169,6 +172,7 @@ include_directories(third_party)
 
 link_libraries(
 	pthread
+	TBB::tbb
 	)
 
 
@@ -190,10 +194,6 @@ add_dependencies(ht2lib hisat2lib_static hisat2lib_shared)
 
 set_target_properties(hisat2lib_static PROPERTIES OUTPUT_NAME hisat2lib)
 set_target_properties(hisat2lib_shared PROPERTIES OUTPUT_NAME hisat2lib)
-
-
-
-
 
 add_executable(hisat2-align-s ${SEARCH_CPPS} ${SHARED_CPPS} ${HT2LIB_CPPS} ${THREE_N_CPPS})
 add_executable(hisat2-align-l ${SEARCH_CPPS} ${SHARED_CPPS} ${HT2LIB_CPPS} ${THREE_N_CPPS})
