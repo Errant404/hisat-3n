@@ -13,7 +13,7 @@ option(BOWTIE_MM "enable memory mapping" ON)
 option(BOWTIE_SHARED_MEM "enable shared memory mapping" OFF)
 option(USE_SRA "enable NCBI SRA Toolkit" OFF)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_VERBOSE_MAKEFILE true)
 set(CMAKE_EXPORT_COMPILE_COMMANDS on)
 set(NCBI_NGS_DIR ${NCBI_NGS_DIR})
@@ -168,7 +168,11 @@ add_definitions(
 	)
 
 
-include_directories(third_party)
+include_directories(
+	third_party
+	third_party/spdlog/include
+	)
+
 
 link_libraries(
 	pthread
