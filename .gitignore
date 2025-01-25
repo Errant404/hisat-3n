@@ -3,6 +3,7 @@
 *.dSYM
 *.ht2
 *.pyc
+*.sam
 *.swp
 *.zip
 .idea
