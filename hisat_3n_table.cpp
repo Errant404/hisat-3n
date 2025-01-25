@@ -241,7 +241,6 @@ public:
     SafeQueue<Position*> freePositionPool; // pool to store free position pointer for reference position.
     SafeQueue<Position*> outputPositionPool; // pool to store the reference position which is loaded and ready to output.
     bool working;
-    mutex mutex_;
     long long int refCoveredPosition; // this is the last position in reference chromosome we loaded in refPositions.
     ifstream refFile;
     vector<mutex*> workerLock; // one lock for one worker thread.
@@ -313,8 +312,7 @@ public:
      */
     void LoadChromosomeNamesPos() {
         string line;
-        while (refFile.good()) {
-            getline(refFile, line);
+        while (getline(refFile, line)) {
             if (line.front() == '>') { // this line is chromosome name
                 chromosome = getChrName(line);
                 streampos currentPos = refFile.tellg();
@@ -450,8 +448,7 @@ public:
         string line;
         lastBase = 'X';
         location = 0;
-        while (refFile.good()) {
-            getline(refFile, line);
+        while (getline(refFile, line)) {
             if (line.front() == '>') { // this line is chromosome name
                 return; // meet next chromosome, return it.
             } else {
@@ -475,8 +472,7 @@ public:
     void loadMore() {
         refCoveredPosition += loadingBlockSize;
         string line;
-        while (refFile.good()) {
-            getline(refFile, line);
+        while (getline(refFile, line)) {
             if (line.front() == '>') { // meet next chromosome, return.
                 return ;
             } else {
@@ -623,7 +619,7 @@ int hisat_3n_table()
     long long int reloadPos; // the position in reference that we need to reload.
     long long int lastPos = 0; // the position on last SAM line. compare lastPos with samPos to make sure the SAM is sorted.
 
-    while (alignmentFile->good()) {
+    while (true) {
         positions->getFreeStringPointer(line);
         if (!getline(*alignmentFile, *line)) {
             positions->returnLine(line);
