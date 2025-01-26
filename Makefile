@@ -76,7 +76,7 @@ PTHREAD_LIB =
 ifeq (1,$(MINGW))
 	PTHREAD_LIB = 
 else
-	PTHREAD_LIB = -lpthread
+	PTHREAD_LIB = -pthread
 endif
 
 SEARCH_LIBS = 
