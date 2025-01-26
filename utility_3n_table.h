@@ -21,6 +21,7 @@
 #define UTILITY_3N_TABLE_H
 
 #include <cassert>
+#include <condition_variable>
 #include <iostream>
 #include <mutex>
 #include <queue>
@@ -193,32 +194,12 @@ public:
  */
 template <typename T>
 class SafeQueue {
-private:
+public:
     mutex mutex_;
     queue<T> queue_;
-
-    string getReadName(string* line){
-        int startPosition = 0;
-        int endPosition;
-
-        endPosition = line->find("\t", startPosition);
-        string readName = line->substr(startPosition, endPosition - startPosition);
-        return readName;
-    }
+    condition_variable cv;
 
 public:
-    void pop() {
-        mutex_.lock();
-        queue_.pop();
-        mutex_.unlock();
-    }
-
-    T front() {
-        mutex_.lock();
-        T value = queue_.front();
-        mutex_.unlock();
-        return value;
-    }
 
     int size() {
         mutex_.lock();

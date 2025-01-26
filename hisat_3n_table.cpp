@@ -17,7 +17,7 @@
  * along with HISAT-3N.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
+#include <atomic>
 #include <iostream>
 #include <getopt.h>
 #include "position_3n_table.h"
@@ -243,28 +243,22 @@ public:
     bool working;
     long long int refCoveredPosition; // this is the last position in reference chromosome we loaded in refPositions.
     ifstream refFile;
-    vector<mutex*> workerLock; // one lock for one worker thread.
     int nThreads = 1;
     ChromosomeFilePositions chromosomePos; // store the chromosome name and it's streamPos. To quickly find new chromosome in file.
     bool addedChrName = false;
     bool removedChrName = false;
+    atomic_size_t numTasks{0};
 
     Positions(string inputRefFileName, int inputNThreads, bool inputAddedChrName, bool inputRemovedChrName) {
         working = true;
         nThreads = inputNThreads;
         addedChrName = inputAddedChrName;
         removedChrName = inputRemovedChrName;
-        for (int i = 0; i < nThreads; i++) {
-            workerLock.push_back(new mutex);
-        }
         refFile.open(inputRefFileName, ios_base::in);
         LoadChromosomeNamesPos();
     }
 
     ~Positions() {
-        for (int i = 0; i < workerLock.size(); i++) {
-            delete workerLock[i];
-        }
         Position* pos;
         while(freePositionPool.popFront(pos)) {
             delete pos;
@@ -356,10 +350,7 @@ public:
      * if we can go through all the workerLock, that means no worker is appending new position.
      */
     void appendingFinished() {
-        for (int i = 0; i < nThreads; i++) {
-            workerLock[i]->lock();
-            workerLock[i]->unlock();
-        }
+        while (numTasks) {}
     }
 
     /**
@@ -376,20 +367,27 @@ public:
 
         *out_ << "ref\tpos\tstrand\tconvertedBaseQualities\tconvertedBaseCount\tunconvertedBaseQualities\tunconvertedBaseCount\n";
         Position* pos;
-        while (working) {
-            if (outputPositionPool.popFront(pos)) {
-                *out_ << pos->chromosome << '\t'
-                          << to_string(pos->location) << '\t'
-                          << pos->strand << '\t'
-                          << pos->convertedQualities << '\t'
-                          << to_string(pos->convertedQualities.size()) << '\t'
-                          << pos->unconvertedQualities << '\t'
-                          << to_string(pos->unconvertedQualities.size()) << '\n';
-                returnPosition(pos);
-            } else {
-                this_thread::sleep_for (std::chrono::microseconds(1));
+        while (true) {
+            // if (outputPositionPool.popFront(pos)) 
+            {
+                unique_lock<std::mutex> lock(outputPositionPool.mutex_);
+                outputPositionPool.cv.wait(lock, [this] { return !outputPositionPool.queue_.empty() || !working; });
+                if (!working) { break;}
+                pos = outputPositionPool.queue_.front();
+                outputPositionPool.queue_.pop();
+                lock.unlock();
+                outputPositionPool.cv.notify_all();
             }
+            *out_ << pos->chromosome << '\t'
+                        << to_string(pos->location) << '\t'
+                        << pos->strand << '\t'
+                        << pos->convertedQualities << '\t'
+                        << to_string(pos->convertedQualities.size()) << '\t'
+                        << pos->unconvertedQualities << '\t'
+                        << to_string(pos->unconvertedQualities.size()) << '\n';
+            returnPosition(pos);
         }
+            // this_thread::sleep_for (std::chrono::microseconds(1));
         tableFile.close();
     }
 
@@ -415,6 +413,7 @@ public:
         if (index != 0) {
             refPositions.erase(refPositions.begin(), refPositions.begin()+index);
         }
+        outputPositionPool.cv.notify_all();
     }
 
     /**
@@ -433,6 +432,7 @@ public:
             }
         }
         refPositions.clear();
+        outputPositionPool.cv.notify_all();
     }
 
     /**
@@ -463,6 +463,7 @@ public:
                 }
             }
         }
+        freePositionPool.cv.notify_all();
     }
 
     /**
@@ -489,6 +490,7 @@ public:
                 }
             }
         }
+        freePositionPool.cv.notify_all();
     }
 
 
@@ -535,8 +537,12 @@ public:
      * get a Position pointer from freePositionPool, if freePositionPool is empty, make a new Position pointer.
      */
     void getFreePosition(Position*& newPosition) {
-        while (outputPositionPool.size() >= 10000) {
-            this_thread::sleep_for (std::chrono::microseconds(1));
+        // while (outputPositionPool.size() >= 10000) {
+        //     this_thread::sleep_for (std::chrono::microseconds(1));
+        // }
+        {
+            unique_lock<std::mutex> lock(outputPositionPool.mutex_);
+            outputPositionPool.cv.wait(lock, [this] { return outputPositionPool.queue_.size() < 10000; });
         }
         if (freePositionPool.popFront(newPosition)) {
             return;
@@ -569,20 +575,33 @@ public:
         string* line;
         Alignment newAlignment;
 
-        while (working) {
-            workerLock[threadID]->lock();
-            if(!linePool.popFront(line)) {
-                workerLock[threadID]->unlock();
-                this_thread::sleep_for (std::chrono::nanoseconds(1));
-                continue;
+        while (true) {
+            // workerLock[threadID]->lock();
+            // if(!linePool.popFront(line)) {
+            //     workerLock[threadID]->unlock();
+            //     this_thread::sleep_for (std::chrono::nanoseconds(1));
+            //     continue;
+            // }
+            {
+                unique_lock<std::mutex> lock(linePool.mutex_);
+                linePool.cv.wait(lock, [this] { return !linePool.queue_.empty() || !working; });
+                if (!working) { break;}
+                line = linePool.queue_.front();
+                linePool.queue_.pop();
+                lock.unlock();
+                linePool.cv.notify_one();
             }
-            while (refPositions.empty()) {
-                this_thread::sleep_for (std::chrono::microseconds(1));
+            // while (refPositions.empty()) {
+            //     this_thread::sleep_for (std::chrono::microseconds(1));
+            // }
+            {
+                unique_lock<std::mutex> lock(freePositionPool.mutex_);
+                freePositionPool.cv.wait(lock, [this] { return !refPositions.empty(); });
             }
             newAlignment.parse(line);
             returnLine(line);
             appendPositions(newAlignment);
-            workerLock[threadID]->unlock();
+            numTasks--;
         }
     }
 };
@@ -631,8 +650,12 @@ int hisat_3n_table()
             continue;
         }
         // limit the linePool size to save memory
-        while(positions->linePool.size() > 1000 * nThreads) {
-            this_thread::sleep_for (std::chrono::microseconds(1));
+        // while(positions->linePool.size() > 1000 * nThreads) {
+        //     this_thread::sleep_for (std::chrono::microseconds(1));
+        // }
+        {
+            unique_lock<std::mutex> lock(positions->linePool.mutex_);
+            positions->linePool.cv.wait(lock, [positions] { return positions->linePool.queue_.size() < 1000 * nThreads; });
         }
         // if the SAM line is empty or unmapped, get the next SAM line.
         if (!getSAMChromosomePos(line, samChromosome, samPos)) {
@@ -643,8 +666,16 @@ int hisat_3n_table()
         // then load a new reference chromosome.
         if (samChromosome != positions->chromosome) {
             // wait all line is processed
-            while (!positions->linePool.empty() || positions->outputPositionPool.size() > 100000) {
-                this_thread::sleep_for (std::chrono::microseconds(1));
+            // while (!positions->linePool.empty() || positions->outputPositionPool.size() > 100000) {
+            //     this_thread::sleep_for (std::chrono::microseconds(1));
+            // }
+            {
+                unique_lock<std::mutex> lock(positions->linePool.mutex_);
+                positions->linePool.cv.wait(lock, [positions] { return positions->linePool.queue_.empty(); });
+            }
+            {
+                unique_lock<std::mutex> lock(positions->outputPositionPool.mutex_);
+                positions->outputPositionPool.cv.wait(lock, [positions] { return positions->outputPositionPool.queue_.size() < 100000; });
             }
             positions->appendingFinished();
             positions->moveAllToOutput();
@@ -654,8 +685,16 @@ int hisat_3n_table()
         }
         // if the samPos is larger than reloadPos, load 1 loadingBlockSize bp in from reference.
         while (samPos > reloadPos) {
-            while (!positions->linePool.empty() || positions->outputPositionPool.size() > 100000) {
-                this_thread::sleep_for (std::chrono::microseconds(1));
+            // while (!positions->linePool.empty() || positions->outputPositionPool.size() > 100000) {
+            //     this_thread::sleep_for (std::chrono::microseconds(1));
+            // }
+            {
+                unique_lock<std::mutex> lock(positions->linePool.mutex_);
+                positions->linePool.cv.wait(lock, [positions] { return positions->linePool.queue_.empty(); });
+            }
+            {
+                unique_lock<std::mutex> lock(positions->outputPositionPool.mutex_);
+                positions->outputPositionPool.cv.wait(lock, [positions] { return positions->outputPositionPool.queue_.size() < 100000; });
             }
             positions->appendingFinished();
             positions->moveBlockToOutput();
@@ -667,6 +706,8 @@ int hisat_3n_table()
             throw 1;
         }
         positions->linePool.push(line);
+        positions->linePool.cv.notify_one();
+        positions->numTasks++;
         lastPos = samPos;
     }
     if (!standardInMode) {
@@ -676,22 +717,32 @@ int hisat_3n_table()
     // prepare to close everything.
 
     // make sure linePool is empty
-    while (!positions->linePool.empty()) {
-        this_thread::sleep_for (std::chrono::microseconds(100));
+    // while (!positions->linePool.empty()) {
+    //     this_thread::sleep_for (std::chrono::microseconds(100));
+    // }
+    {
+        unique_lock<std::mutex> lock(positions->linePool.mutex_);
+        positions->linePool.cv.wait(lock, [positions] { return positions->linePool.queue_.empty(); });
     }
     // make sure all workers finished their appending work.
     positions->appendingFinished();
     // move all position to outputPool
     positions->moveAllToOutput();
     // wait until outputPool is empty
-    while (!positions->outputPositionPool.empty()) {
-        this_thread::sleep_for (std::chrono::microseconds(100));
+    // while (!positions->outputPositionPool.empty()) {
+    //     this_thread::sleep_for (std::chrono::microseconds(100));
+    // }
+    {
+        unique_lock<std::mutex> lock(positions->outputPositionPool.mutex_);
+        positions->outputPositionPool.cv.wait(lock, [positions] { return positions->outputPositionPool.queue_.empty(); });
     }
     // stop all thread and clean
     while(positions->freeLinePool.popFront(line)) {
         delete line;
     }
     positions->working = false;
+    positions->linePool.cv.notify_all();
+    positions->outputPositionPool.cv.notify_all();
     for (int i = 0; i < nThreads; i++){
         workers[i]->join();
         delete workers[i];
