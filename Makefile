@@ -21,14 +21,12 @@
 #
 
 INC =
-GCC_PREFIX = $(shell dirname `which gcc`)
-GCC_SUFFIX =
-CC = $(GCC_PREFIX)/gcc$(GCC_SUFFIX)
-CPP = $(GCC_PREFIX)/g++$(GCC_SUFFIX)
+CC = gcc
+CPP = g++
 CXX = $(CPP)
-HEADERS = $(wildcard *.h)
-BOWTIE_MM = 1
-BOWTIE_SHARED_MEM = 0
+HEADERS := $(wildcard *.h)
+BOWTIE_MM := 1
+BOWTIE_SHARED_MEM :=
 
 # Detect Cygwin or MinGW
 WINDOWS = 0
@@ -55,7 +53,7 @@ ifneq (,$(findstring Darwin,$(shell uname)))
 	MACOS = 1
 endif
 
-EXTRA_FLAGS += -DPOPCNT_CAPABILITY -std=c++11
+CXX_FLAGS += -DPOPCNT_CAPABILITY -std=c++11
 INC += -I. -I third_party 
 
 MM_DEF = 
@@ -76,7 +74,7 @@ PTHREAD_LIB =
 ifeq (1,$(MINGW))
 	PTHREAD_LIB = 
 else
-	PTHREAD_LIB = -lpthread
+	PTHREAD_LIB = -pthread
 endif
 
 SEARCH_LIBS = 
@@ -185,13 +183,20 @@ endif
 
 ifeq (64,$(BITS))
 	BITS_FLAG = -m64
+	ifeq ($(shell grep -o avx2 /proc/cpuinfo | head -n 1), avx2)
+    SSE_AVX2 := 1
+	endif
+	ifeq (1, $(SSE_AVX2))
+		SSE_FLAG := -mavx2 -faligned-new -DSSE_AVX2
+	else
+		SSE_FLAG := -msse2
+  	endif
 endif
-SSE_FLAG=-msse2
 
 DEBUG_FLAGS    = -O0 -g3 $(BITS_FLAG) $(SSE_FLAG)
-DEBUG_DEFS     = -DCOMPILER_OPTIONS="\"$(DEBUG_FLAGS) $(EXTRA_FLAGS)\""
+DEBUG_DEFS     = -DCOMPILER_OPTIONS="\"$(DEBUG_FLAGS) $(CXX_FLAGS)\""
 RELEASE_FLAGS  = -O3 $(BITS_FLAG) $(SSE_FLAG) -funroll-loops -g3
-RELEASE_DEFS   = -DCOMPILER_OPTIONS="\"$(RELEASE_FLAGS) $(EXTRA_FLAGS)\""
+RELEASE_DEFS   = -DCOMPILER_OPTIONS="\"$(RELEASE_FLAGS) $(CXX_FLAGS)\""
 NOASSERT_FLAGS = -DNDEBUG
 FILE_FLAGS     = -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE
 HT2LIB_FLAGS   = -DHISAT2_BUILD_LIB
@@ -315,7 +320,7 @@ DEFS :=-fno-strict-aliasing \
 #
 
 hisat2-repeat: hisat2_repeat.cpp $(REPEAT_CPPS) $(SHARED_CPPS) $(HEADERS)
-	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(EXTRA_FLAGS) \
+	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXX_FLAGS) \
 	$(DEFS) -DBOWTIE2 -DBOWTIE_64BIT_INDEX $(NOASSERT_FLAGS) -Wall \
 	$(INC) \
 	-o $@ $< \
@@ -323,7 +328,7 @@ hisat2-repeat: hisat2_repeat.cpp $(REPEAT_CPPS) $(SHARED_CPPS) $(HEADERS)
 	$(LIBS) $(BUILD_LIBS)
 
 hisat2-repeat-debug: hisat2_repeat.cpp $(REPEAT_CPPS) $(SHARED_CPPS) $(HEADERS)
-	$(CXX) $(DEBUG_FLAGS) $(DEBUG_DEFS) $(EXTRA_FLAGS) \
+	$(CXX) $(DEBUG_FLAGS) $(DEBUG_DEFS) $(CXX_FLAGS) \
 	$(DEFS) -DBOWTIE2 -DBOWTIE_64BIT_INDEX -Wall \
 	$(INC) \
 	-o $@ $< \
@@ -336,7 +341,7 @@ hisat2-repeat-debug: hisat2_repeat.cpp $(REPEAT_CPPS) $(SHARED_CPPS) $(HEADERS)
 #
 
 hisat2-build-s: hisat2_build.cpp $(SHARED_CPPS) $(HEADERS)
-	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(EXTRA_FLAGS) \
+	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXX_FLAGS) \
 	$(DEFS) -DBOWTIE2 $(NOASSERT_FLAGS) -Wall -DMASSIVE_DATA_RLCSA \
 	$(INC) \
 	-o $@ $< \
@@ -344,7 +349,7 @@ hisat2-build-s: hisat2_build.cpp $(SHARED_CPPS) $(HEADERS)
 	$(LIBS) $(BUILD_LIBS)
 
 hisat2-build-l: hisat2_build.cpp $(SHARED_CPPS) $(HEADERS)
-	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(EXTRA_FLAGS) \
+	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXX_FLAGS) \
 	$(DEFS) -DBOWTIE2 -DBOWTIE_64BIT_INDEX $(NOASSERT_FLAGS) -Wall \
 	$(INC) \
 	-o $@ $< \
@@ -352,7 +357,7 @@ hisat2-build-l: hisat2_build.cpp $(SHARED_CPPS) $(HEADERS)
 	$(LIBS) $(BUILD_LIBS)
 
 hisat2-build-s-debug: hisat2_build.cpp $(SHARED_CPPS) $(HEADERS)
-	$(CXX) $(DEBUG_FLAGS) $(DEBUG_DEFS) $(EXTRA_FLAGS) \
+	$(CXX) $(DEBUG_FLAGS) $(DEBUG_DEFS) $(CXX_FLAGS) \
 	$(DEFS) -DBOWTIE2 -Wall -DMASSIVE_DATA_RLCSA \
 	$(INC) \
 	-o $@ $< \
@@ -360,7 +365,7 @@ hisat2-build-s-debug: hisat2_build.cpp $(SHARED_CPPS) $(HEADERS)
 	$(LIBS) $(BUILD_LIBS)
 
 hisat2-build-l-debug: hisat2_build.cpp $(SHARED_CPPS) $(HEADERS)
-	$(CXX) $(DEBUG_FLAGS) $(DEBUG_DEFS) $(EXTRA_FLAGS) \
+	$(CXX) $(DEBUG_FLAGS) $(DEBUG_DEFS) $(CXX_FLAGS) \
 	$(DEFS) -DBOWTIE2 -DBOWTIE_64BIT_INDEX -Wall \
 	$(INC) \
 	-o $@ $< \
@@ -372,7 +377,7 @@ hisat2-build-l-debug: hisat2_build.cpp $(SHARED_CPPS) $(HEADERS)
 #
 
 hisat2-align-s: hisat2.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
-	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(EXTRA_FLAGS) \
+	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXX_FLAGS) \
 	$(DEFS) $(SRA_DEF) -DBOWTIE2 $(NOASSERT_FLAGS) -Wall \
 	$(INC) $(SEARCH_INC) \
 	-o $@ $< \
@@ -380,7 +385,7 @@ hisat2-align-s: hisat2.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRA
 	$(LIBS) $(SRA_LIB) $(SEARCH_LIBS)
 
 hisat2-align-l: hisat2.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
-	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(EXTRA_FLAGS) \
+	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXX_FLAGS) \
 	$(DEFS) $(SRA_DEF) -DBOWTIE2 -DBOWTIE_64BIT_INDEX $(NOASSERT_FLAGS) -Wall \
 	$(INC) $(SEARCH_INC) \
 	-o $@ $< \
@@ -389,7 +394,7 @@ hisat2-align-l: hisat2.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRA
 
 hisat2-align-s-debug: hisat2.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
 	$(CXX) $(DEBUG_FLAGS) \
-	$(DEBUG_DEFS) $(EXTRA_FLAGS) \
+	$(DEBUG_DEFS) $(CXX_FLAGS) \
 	$(DEFS) $(SRA_DEF) -DBOWTIE2 -Wall \
 	$(INC) $(SEARCH_INC) \
 	-o $@ $< \
@@ -398,7 +403,7 @@ hisat2-align-s-debug: hisat2.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEAR
 
 hisat2-align-l-debug: hisat2.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEARCH_FRAGMENTS)
 	$(CXX) $(DEBUG_FLAGS) \
-	$(DEBUG_DEFS) $(EXTRA_FLAGS) \
+	$(DEBUG_DEFS) $(CXX_FLAGS) \
 	$(DEFS) $(SRA_DEF) -DBOWTIE2 -DBOWTIE_64BIT_INDEX -Wall \
 	$(INC) $(SEARCH_INC) \
 	-o $@ $< \
@@ -411,7 +416,7 @@ hisat2-align-l-debug: hisat2.cpp $(SEARCH_CPPS) $(SHARED_CPPS) $(HEADERS) $(SEAR
 
 hisat2-inspect-s: hisat2_inspect.cpp $(HEADERS) $(SHARED_CPPS)
 	$(CXX) $(RELEASE_FLAGS) \
-	$(RELEASE_DEFS) $(EXTRA_FLAGS) \
+	$(RELEASE_DEFS) $(CXX_FLAGS) \
 	$(DEFS) -DBOWTIE2 -DHISAT2_INSPECT_MAIN -Wall \
 	$(INC) -I . \
 	-o $@ $< \
@@ -420,7 +425,7 @@ hisat2-inspect-s: hisat2_inspect.cpp $(HEADERS) $(SHARED_CPPS)
 
 hisat2-inspect-l: hisat2_inspect.cpp $(HEADERS) $(SHARED_CPPS)
 	$(CXX) $(RELEASE_FLAGS) \
-	$(RELEASE_DEFS) $(EXTRA_FLAGS) \
+	$(RELEASE_DEFS) $(CXX_FLAGS) \
 	$(DEFS) -DBOWTIE2 -DBOWTIE_64BIT_INDEX -DHISAT2_INSPECT_MAIN -Wall \
 	$(INC) -I . \
 	-o $@ $< \
@@ -429,7 +434,7 @@ hisat2-inspect-l: hisat2_inspect.cpp $(HEADERS) $(SHARED_CPPS)
 
 hisat2-inspect-s-debug: hisat2_inspect.cpp $(HEADERS) $(SHARED_CPPS) 
 	$(CXX) $(DEBUG_FLAGS) \
-	$(DEBUG_DEFS) $(EXTRA_FLAGS) \
+	$(DEBUG_DEFS) $(CXX_FLAGS) \
 	$(DEFS) -DBOWTIE2 -DHISAT2_INSPECT_MAIN -Wall \
 	$(INC) -I . \
 	-o $@ $< \
@@ -438,7 +443,7 @@ hisat2-inspect-s-debug: hisat2_inspect.cpp $(HEADERS) $(SHARED_CPPS)
 
 hisat2-inspect-l-debug: hisat2_inspect.cpp $(HEADERS) $(SHARED_CPPS) 
 	$(CXX) $(DEBUG_FLAGS) \
-	$(DEBUG_DEFS) $(EXTRA_FLAGS) \
+	$(DEBUG_DEFS) $(CXX_FLAGS) \
 	$(DEFS) -DBOWTIE2 -DBOWTIE_64BIT_INDEX -DHISAT2_INSPECT_MAIN -Wall \
 	$(INC) -I . \
 	-o $@ $< \
@@ -450,10 +455,10 @@ hisat2-inspect-l-debug: hisat2_inspect.cpp $(HEADERS) $(SHARED_CPPS)
 #
 
 hisat-3n-table: hisat_3n_table.cpp $(THREE_N_HEADERS)
-	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(EXTRA_FLAGS) $(NOASSERT_FLAGS) $(DEFS) -pthread -o $@ $<
+	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXX_FLAGS) $(NOASSERT_FLAGS) $(DEFS) -pthread -o $@ $<
 
 hisat-3n-table-debug: hisat_3n_table.cpp $(THREE_N_HEADERS)
-	$(CXX) $(DEBUG_FLAGS) $(DEBUG_DEFS) $(EXTRA_FLAGS) $(NOASSERT_FLAGS) $(DEFS) -pthread -o $@ $<
+	$(CXX) $(DEBUG_FLAGS) $(DEBUG_DEFS) $(CXX_FLAGS) $(NOASSERT_FLAGS) $(DEFS) -pthread -o $@ $<
 
 #
 # HT2LIB targets
@@ -468,31 +473,31 @@ libhisat2lib.a: $(HT2LIB_RELEASE_OBJS)
 	ar rc $@ $(HT2LIB_RELEASE_OBJS) 
 
 libhisat2lib-debug.so: $(HT2LIB_SHARED_DEBUG_OBJS)
-	$(CXX) $(DEBUG_FLAGS) $(DEBUG_DEFS) $(EXTRA_FLAGS) $(DEFS) $(SRA_DEF) -DBOWTIE2 -Wall $(INC) $(SEARCH_INC) \
+	$(CXX) $(DEBUG_FLAGS) $(DEBUG_DEFS) $(CXX_FLAGS) $(DEFS) $(SRA_DEF) -DBOWTIE2 -Wall $(INC) $(SEARCH_INC) \
 	-shared -o $@  $(HT2LIB_SHARED_DEBUG_OBJS) $(LIBS) $(SRA_LIB) $(SEARCH_LIBS)
 
 libhisat2lib.so: $(HT2LIB_SHARED_RELEASE_OBJS)
-	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(EXTRA_FLAGS) $(DEFS) $(SRA_DEF) -DBOWTIE2 $(NOASSERT_FLAGS) -Wall  $(INC) $(SEARCH_INC)\
+	$(CXX) $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXX_FLAGS) $(DEFS) $(SRA_DEF) -DBOWTIE2 $(NOASSERT_FLAGS) -Wall  $(INC) $(SEARCH_INC)\
 	-shared -o $@ $(HT2LIB_SHARED_RELEASE_OBJS) $(LIBS) $(SRA_LIB) $(SEARCH_LIBS)
 	
 .ht2lib-obj-debug/%.o: %.cpp
 	@mkdir -p $(dir $@)/$(dir $<)
-	$(CXX) -fPIC $(DEBUG_FLAGS) $(DEBUG_DEFS) $(EXTRA_FLAGS) $(DEFS) $(SRA_DEF) $(HT2LIB_FLAGS) -DBOWTIE2 -Wall $(INC) $(SEARCH_INC) \
+	$(CXX) -fPIC $(DEBUG_FLAGS) $(DEBUG_DEFS) $(CXX_FLAGS) $(DEFS) $(SRA_DEF) $(HT2LIB_FLAGS) -DBOWTIE2 -Wall $(INC) $(SEARCH_INC) \
 	-c -o $@ $< 
 
 .ht2lib-obj-release/%.o: %.cpp
 	@mkdir -p $(dir $@)/$(dir $<)
-	$(CXX) -fPIC $(RELEASE_FLAGS) $(RELEASE_DEFS) $(EXTRA_FLAGS) $(DEFS) $(SRA_DEF) $(HT2LIB_FLAGS) -DBOWTIE2 $(NOASSERT_FLAGS) -Wall $(INC) $(SEARCH_INC) \
+	$(CXX) -fPIC $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXX_FLAGS) $(DEFS) $(SRA_DEF) $(HT2LIB_FLAGS) -DBOWTIE2 $(NOASSERT_FLAGS) -Wall $(INC) $(SEARCH_INC) \
 	-c -o $@ $< 
 
 .ht2lib-obj-debug-shared/%.o: %.cpp
 	@mkdir -p $(dir $@)/$(dir $<)
-	$(CXX) -fPIC $(DEBUG_FLAGS) $(DEBUG_DEFS) $(EXTRA_FLAGS) $(DEFS) $(SRA_DEF) $(HT2LIB_FLAGS) -DBOWTIE2 -Wall $(INC) $(SEARCH_INC) \
+	$(CXX) -fPIC $(DEBUG_FLAGS) $(DEBUG_DEFS) $(CXX_FLAGS) $(DEFS) $(SRA_DEF) $(HT2LIB_FLAGS) -DBOWTIE2 -Wall $(INC) $(SEARCH_INC) \
 	-c -o $@ $< 
 
 .ht2lib-obj-release-shared/%.o: %.cpp
 	@mkdir -p $(dir $@)/$(dir $<)
-	$(CXX) -fPIC $(RELEASE_FLAGS) $(RELEASE_DEFS) $(EXTRA_FLAGS) $(DEFS) $(SRA_DEF) $(HT2LIB_FLAGS) -DBOWTIE2 $(NOASSERT_FLAGS) -Wall $(INC) $(SEARCH_INC) \
+	$(CXX) -fPIC $(RELEASE_FLAGS) $(RELEASE_DEFS) $(CXX_FLAGS) $(DEFS) $(SRA_DEF) $(HT2LIB_FLAGS) -DBOWTIE2 $(NOASSERT_FLAGS) -Wall $(INC) $(SEARCH_INC) \
 	-c -o $@ $< 
 
 #
