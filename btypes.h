@@ -21,6 +21,9 @@
 #ifndef BOWTIE_INDEX_TYPES_H
 #define	BOWTIE_INDEX_TYPES_H
 
+#include <cstdint>
+#include <string>
+
 #ifdef BOWTIE_64BIT_INDEX
 #define OFF_MASK 0xffffffffffffffff
 #define OFF_LEN_MASK 0xc000000000000000

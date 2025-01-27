@@ -19,6 +19,7 @@
 
 #ifndef HIERGBWT_COMMON_H_
 #define HIERGBWT_COMMON_H_
+#include <cstdint>
 
 // maximum size of a sequence represented by a local index
 static const uint32_t local_index_size = (1 << 16) - (1 << 13);  // 1 << 5 is necessary for eftab index

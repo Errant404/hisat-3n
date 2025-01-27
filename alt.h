@@ -26,6 +26,7 @@
 #include "assert_helpers.h"
 #include "word_io.h"
 #include "mem_ids.h"
+#include "ds.h"
 
 using namespace std;
 
