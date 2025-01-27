@@ -10,7 +10,7 @@
 
 // Intel compiler defines __GNUC__, so this is needed to disambiguate
 
-#if defined(__INTEL_COMPILER)
+#if defined(__INTEL_COMPILER) || defined (__INTEL_LLVM_COMPILER)
 #   define USING_INTEL_COMPILER
 #elif defined(__GNUC__)
 #   define USING_GCC_COMPILER
@@ -47,8 +47,8 @@ public:
 		__cpuid((int *) &regs, 0); // test if __cpuid() works, if not catch the exception
 		__cpuid((int *) &regs, 0x1); // POPCNT bit is bit 23 in ECX
 #elif defined(USING_INTEL_COMPILER)
-        __cpuid((void *) &regs,0); // test if __cpuid() works, if not catch the exception
-        __cpuid((void *) &regs,0x1); // POPCNT bit is bit 23 in ECX
+        __cpuid((int *) &regs,0); // test if __cpuid() works, if not catch the exception
+        __cpuid((int *) &regs,0x1); // POPCNT bit is bit 23 in ECX
 #elif defined(USING_GCC_COMPILER)
         __get_cpuid(0x1, &regs.EAX, &regs.EBX, &regs.ECX, &regs.EDX);
 #else
