@@ -2,6 +2,8 @@
 #define RADIX_SORT_H_
 
 #include <time.h>
+#include "ds.h"
+using namespace std;
 
 // in place radix sort using a single thread, should not be called directly
 // used for leaves of both in and out of place radix sorts

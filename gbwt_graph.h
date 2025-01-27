@@ -30,6 +30,8 @@
 #include <time.h>
 #include "alt.h"
 #include "radix_sort.h"
+#include "ref_read.h"
+#include "sstring.h"
 
 // Reference:
 // Jouni Sirén, Niko Välimäki, and Veli Mäkinen: Indexing Graphs for Path Queries with Applications in Genome Research.

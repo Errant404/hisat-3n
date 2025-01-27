@@ -26,6 +26,7 @@
 #include <limits>
 #include "qual.h"
 #include "ds.h"
+#include "rfm.h"
 #include "sstring.h"
 #include "alphabet.h"
 #include "edit.h"
