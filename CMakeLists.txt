@@ -74,7 +74,6 @@ set(SHARED_CPPS
 	reference.cpp
 	ref_read.cpp
 	shmem.cpp
-	tinythread.cpp
 	)
 
 set(SEARCH_CPPS
@@ -188,6 +187,9 @@ endif()
 if(BOWTIE_SHARED_MEM)
 	add_definitions(-DBOWTIE_SHARED_MEM)
 endif()
+
+add_definitions(-DNO_SPINLOCK)
+add_definitions(-DNDEBUG)
 
 include_directories(${PROJECT_SOURCE_DIR})
 add_definitions(-DCOMPILER_OPTIONS="${CMAKE_CXX_FLAGS}")

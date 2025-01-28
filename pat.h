@@ -1792,7 +1792,7 @@ protected:
     ngs::ReadIterator* sra_it_;
     
     SRA_Data* sra_data_;
-    tthread::thread* io_thread_;    
+    std::thread* io_thread_;    
 };
 
 #endif

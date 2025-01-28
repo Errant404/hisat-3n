@@ -129,6 +129,7 @@ SpliceSiteDB::SpliceSiteDB(
 _numRefs(refs.numRefs()),
 _write(write),
 _read(read),
+_mutex(_numRefs),
 _threadSafe(threadSafe),
 _empty(true)
 {
@@ -151,7 +152,6 @@ _empty(true)
         _bwIndex.push_back(new RedBlack<SpliceSitePos, uint32_t>(16 << 10, CA_CAT));
         _pool.expand();
         _spliceSites.expand();
-        _mutex.push_back(MUTEX_T());
     }
     
     donorstr.resize(donor_exonic_len + donor_intronic_len);
