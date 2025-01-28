@@ -22,6 +22,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <thread>
 #include "assert_helpers.h"
 #include "multikey_qsort.h"
 #include "timer.h"
@@ -787,7 +788,7 @@ void DifferenceCoverSample<TStr>::build(int nthreads) {
                 mkeyQSortSuf2(t, sPrimeArr, sPrimeSz, sPrimeOrderArr, 4,
                               this->verbose(), false, query_depth, &boundaries);
                 if(boundaries.size() > 0) {
-                    AutoArray<tthread::thread*> threads(nthreads);
+                    AutoArray<std::thread*> threads(nthreads);
                     EList<VSortingParam<TStr> > tparams;
                     size_t cur = 0;
                     MUTEX_T mutex;
@@ -803,7 +804,7 @@ void DifferenceCoverSample<TStr>::build(int nthreads) {
                         tparams.back().boundaries = &boundaries;
                         tparams.back().cur = &cur;
                         tparams.back().mutex = &mutex;
-                        threads[tid] = new tthread::thread(VSorting_worker<TStr>, (void*)&tparams.back());
+                        threads[tid] = new std::thread(VSorting_worker<TStr>, (void*)&tparams.back());
                     }
                     for (int tid = 0; tid < nthreads; tid++) {
                         threads[tid]->join();

@@ -25,6 +25,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
 #include "assert_helpers.h"
 #include "diff_sample.h"
 #include "multikey_qsort.h"
@@ -277,7 +278,7 @@ public:
                     _tparams.expand();
                     _tparams.back().first = this;
                     _tparams.back().second = tid;
-                    _threads.push_back(new tthread::thread(nextBlock_Worker, (void*)&_tparams.back()));
+                    _threads.push_back(new std::thread(nextBlock_Worker, (void*)&_tparams.back()));
                 }
                 assert_eq(_threads.size(), (size_t)this->_nthreads);
             }
@@ -422,7 +423,7 @@ private:
     MUTEX_T                 _mutex;       /// synchronization of output message
     string                  _base_fname;  /// base file name for storing SA blocks
     bool                    _bigEndian;   /// bigEndian?
-    EList<tthread::thread*> _threads;     /// thread list
+    EList<std::thread*> _threads;     /// thread list
     EList<pair<KarkkainenBlockwiseSA*, int> > _tparams;
     ELList<TIndexOffU>      _itrBuckets;  /// buckets
     EList<bool>             _done;        /// is a block processed?
@@ -605,7 +606,7 @@ void KarkkainenBlockwiseSA<TStr>::buildSamples() {
     // Iterate until all buckets are less than
     while(--limit >= 0) {
         TIndexOffU numBuckets = (TIndexOffU)_sampleSuffs.size()+1;
-        AutoArray<tthread::thread*> threads(this->_nthreads);
+        AutoArray<std::thread*> threads(this->_nthreads);
         EList<BinarySortingParam<TStr> > tparams;
         for(int tid = 0; tid < this->_nthreads; tid++) {
             // Calculate bucket sizes by doing a binary search for each
@@ -635,7 +636,7 @@ void KarkkainenBlockwiseSA<TStr>::buildSamples() {
             if(this->_nthreads == 1) {
                 BinarySorting_worker<TStr>((void*)&tparams.back());
             } else {
-                threads[tid] = new tthread::thread(BinarySorting_worker<TStr>, (void*)&tparams.back());
+                threads[tid] = new std::thread(BinarySorting_worker<TStr>, (void*)&tparams.back());
             }
         }
         

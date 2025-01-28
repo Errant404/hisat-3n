@@ -86,6 +86,8 @@ ifeq (1,$(MINGW))
 	INSPECT_LIBS = 
 endif
 
+CXXFLAGS += -DNO_SPINLOCK
+
 USE_SRA = 0
 SRA_DEF =
 SRA_LIB =
@@ -108,7 +110,7 @@ HT2LIB_CPPS = $(HT2LIB_DIR)/ht2_init.cpp \
 SHARED_CPPS = ccnt_lut.cpp ref_read.cpp alphabet.cpp shmem.cpp \
 	edit.cpp gfm.cpp \
 	reference.cpp ds.cpp multikey_qsort.cpp limit.cpp \
-	random_source.cpp tinythread.cpp utility_3n.cpp
+	random_source.cpp utility_3n.cpp
 SEARCH_CPPS = qual.cpp pat.cpp \
 	read_qseq.cpp aligner_seed_policy.cpp \
 	aligner_seed.cpp \
