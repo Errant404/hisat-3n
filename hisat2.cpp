@@ -3947,7 +3947,7 @@ static void multiseedSearch(
         multiseed_rrefs        = rrefs;
 	}
 
-	AutoArray<tthread::thread*> threads(nthreads);
+	AutoArray<std::thread*> threads(nthreads);
 	AutoArray<int> tids(nthreads);	
 	// Start the metrics thread
 	{
@@ -3959,7 +3959,7 @@ static void multiseedSearch(
 		for(int i = 0; i < nthreads; i++) {
 			// Thread IDs start at 1
 			tids[i] = i+1;
-            threads[i] = new tthread::thread(multiseedSearchWorker_hisat2, (void*)&tids[i]);
+            threads[i] = new std::thread(multiseedSearchWorker_hisat2, (void*)&tids[i]);
 		}
 
         for (int i = 0; i < nthreads; i++)

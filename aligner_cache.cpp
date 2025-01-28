@@ -18,7 +18,6 @@
  */
 
 #include "aligner_cache.h"
-#include "tinythread.h"
 
 #ifdef ALIGNER_CACHE_MAIN
 

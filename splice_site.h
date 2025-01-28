@@ -24,6 +24,7 @@
 #include <iostream>
 #include <fstream>
 #include <limits>
+#include <vector>
 #include "assert_helpers.h"
 #include "mem_ids.h"
 #include "ref_coord.h"
@@ -599,7 +600,7 @@ private:
     bool                                _write;
     bool                                _read;
     
-    EList<MUTEX_T>                      _mutex;
+    vector<MUTEX_T>                     _mutex;
     bool                                _threadSafe;
     
     SStringExpandable<char>             raw_refbuf;
