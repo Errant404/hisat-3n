@@ -1,4 +1,10 @@
-cmake_minimum_required(VERSION 3.10)
+if (CMAKE_HOST_WIN32)
+    # need at least CMake 3.25 for IntelLLVM support of IntelSYCL package on Windows
+    cmake_minimum_required(VERSION 3.25)
+else()
+    # CMake 3.23.5 is the minimum recommended for IntelLLVM on Linux
+    cmake_minimum_required(VERSION 3.23.5)
+endif()
 project(hisat-3n)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
@@ -18,12 +24,14 @@ set(CMAKE_VERBOSE_MAKEFILE true)
 set(CMAKE_EXPORT_COMPILE_COMMANDS on)
 set(NCBI_NGS_DIR ${NCBI_NGS_DIR})
 
+find_package(IntelSYCL REQUIRED)
+
 # Common Flag
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall")
 
 # Debug/Release Flag
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -funroll-loops")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fast -xHost")
 
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
