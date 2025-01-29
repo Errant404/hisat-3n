@@ -10,7 +10,7 @@
 
 // Intel compiler defines __GNUC__, so this is needed to disambiguate
 
-#if defined(__INTEL_COMPILER) || defined (__INTEL_LLVM_COMPILER)
+#if defined(__INTEL_COMPILER) || defined(__INTEL_LLVM_COMPILER)
 #   define USING_INTEL_COMPILER
 #elif defined(__GNUC__)
 #   define USING_GCC_COMPILER

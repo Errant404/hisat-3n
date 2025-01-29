@@ -1922,7 +1922,7 @@ static void parseOptions(int argc, const char **argv) {
 	}
 	// Now parse all the presets.  Might want to pick which presets version to
 	// use according to other parameters.
-	auto_ptr<Presets> presets(new PresetsV0());
+	unique_ptr<Presets> presets(new PresetsV0());
 	// Apply default preset
 	if(!defaultPreset.empty()) {
 		polstr = applyPreset(defaultPreset, *presets.get()) + polstr;
@@ -3378,8 +3378,8 @@ static void multiseedSearchWorker_hisat2(void *vp) {
 	// problems, or generally characterize performance.
 	
 	//const BitPairReference& refs   = *multiseed_refs;
-	auto_ptr<PatternSourcePerThreadFactory> patsrcFact(createPatsrcFactory(patsrc, tid));
-	auto_ptr<PatternSourcePerThread> ps(patsrcFact->create());
+	unique_ptr<PatternSourcePerThreadFactory> patsrcFact(createPatsrcFactory(patsrc, tid));
+	unique_ptr<PatternSourcePerThread> ps(patsrcFact->create());
 	
     // Instantiate an object for holding reporting-related parameters.
     if(maxSeeds == 0) {
@@ -3400,7 +3400,7 @@ static void multiseedSearchWorker_hisat2(void *vp) {
                        repeat);
     
 	// Instantiate a mapping quality calculator
-	auto_ptr<Mapq> bmapq(new_mapq(mapqv, scoreMin, sc));
+	unique_ptr<Mapq> bmapq(new_mapq(mapqv, scoreMin, sc));
 
 	
 	// Make a per-thread wrapper for the global MHitSink object.
@@ -4536,11 +4536,11 @@ static void driver(
 
         AlnSink<index_t> *mssink = NULL;
 
-        //auto_ptr<BitPairReference> refss[2];
-        auto_ptr<BitPairReference> refs;
+        //unique_ptr<BitPairReference> refss[2];
+        unique_ptr<BitPairReference> refs;
 
         Timer *_tRef = new Timer(cerr, "Time loading reference: ", timing);
-        refs = auto_ptr<BitPairReference>(
+        refs = unique_ptr<BitPairReference>(
                 new BitPairReference(
                         threeN ? adjIdxBases_3N[0] : adjIdxBase,
                         NULL,
