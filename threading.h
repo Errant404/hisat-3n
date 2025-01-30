@@ -21,10 +21,34 @@
 #define THREADING_H_
 
 #include <iostream>
-#include <mutex>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+#ifdef WITH_TBB
+# include <tbb/mutex.h>
+# include <tbb/spin_mutex.h>
+# include <tbb/queuing_mutex.h>
+#else
+# include <mutex>
+#endif
 
 #ifdef NO_SPINLOCK
+# ifdef WITH_TBB
+#   ifdef WITH_QUEUELOCK
+#  	define MUTEX_T tbb::queuing_mutex
+#   else
+#       define MUTEX_T tbb::mutex
+#   endif
+# else
 #   define MUTEX_T std::mutex
+# endif
+#else
+# ifdef WITH_TBB
+#   define MUTEX_T tbb::spin_mutex
+# else
+#   define MUTEX_T std::mutex
+# endif
 #endif /* NO_SPINLOCK */
 
 
@@ -33,22 +57,43 @@
  */
 class ThreadSafe {
 public:
-    ThreadSafe(MUTEX_T* ptr_mutex, bool locked = true) {
+
+	ThreadSafe() : ptr_mutex(NULL) { }
+	
+	ThreadSafe(MUTEX_T* ptr_mutex, bool locked = true) : ptr_mutex(NULL) {
 		if(locked) {
-		    this->ptr_mutex = ptr_mutex;
-		    ptr_mutex->lock();
+#if WITH_TBB && NO_SPINLOCK && WITH_QUEUELOCK
+			//have to use the heap as we can't copy
+			//the scoped lock
+			this->ptr_mutex = new MUTEX_T::scoped_lock(*ptr_mutex);
+#else
+			this->ptr_mutex = ptr_mutex;
+			ptr_mutex->lock();
+#endif
 		}
-		else
-		    this->ptr_mutex = NULL;
 	}
 
-	~ThreadSafe() {
-	    if (ptr_mutex != NULL)
-	        ptr_mutex->unlock();
-	}
-    
+    ~ThreadSafe() {
+        unlock();
+    }
+
+    void unlock() {
+        if (ptr_mutex != NULL) {
+#if WITH_TBB && NO_SPINLOCK && WITH_QUEUELOCK
+            delete ptr_mutex;
+#else
+            ptr_mutex->unlock();
+#endif
+            ptr_mutex = NULL;
+        }
+    }
+
 private:
+#if WITH_TBB && NO_SPINLOCK && WITH_QUEUELOCK
+	MUTEX_T::scoped_lock* ptr_mutex;
+#else
 	MUTEX_T *ptr_mutex;
+#endif
 };
 
 #endif
