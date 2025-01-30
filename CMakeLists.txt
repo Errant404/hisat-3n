@@ -177,8 +177,27 @@ add_definitions(
 
 include_directories(${SOURCE_DIR}/third_party)
 
+if(NOT NO_TBB)
+  find_package(TBB REQUIRED)
+  link_libraries(TBB::tbb)
+  add_definitions(-DWITH_TBB)
+endif()
+
 find_package(Threads REQUIRED)
 link_libraries(Threads::Threads)
+
+if (NO_SPINLOCK)
+  add_definitions(-DNO_SPINLOCK)
+endif()
+
+if (WITH_AFFINITY)
+  add_definitions(-DWITH_AFFINITY)
+endif()
+
+if (NOT NO_QUEUELOCK)
+  add_definitions(-DNO_SPINLOCK)
+  add_definitions(-DWITH_QUEUELOCK)
+endif()
 
 if(BOWTIE_MM)
 	add_definitions(-DBOWTIE_MM)
