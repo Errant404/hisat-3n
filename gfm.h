@@ -352,24 +352,39 @@ struct SideLocus {
 		const GFMParams<index_t>& gp,
 		const uint8_t* gfm,
 		SideLocus& ltop,
-		SideLocus& lbot)
+		SideLocus& lbot,
+		bool prefetch=true)
 	{
 		const index_t sideGbwtLen = gp._sideGbwtLen;
 		assert_gt(bot, top);
-		ltop.initFromRow(top, gp, gfm);
+        ltop.initFromRow(top, gp, gfm, prefetch);
 		index_t spread = bot - top;
 		// Many cache misses on the following lines
-		if(ltop._charOff + spread < sideGbwtLen) {
-			lbot._charOff = ltop._charOff + spread;
+        const TIndexOffU charOffSum = ltop._charOff + spread;
+        if(charOffSum < sideGbwtLen) {
+            const uint32_t bcharOff = (uint32_t) charOffSum;
+            lbot._charOff = bcharOff;
 			lbot._sideNum = ltop._sideNum;
 			lbot._sideByteOff = ltop._sideByteOff;
-			lbot._by = lbot._charOff >> 2;
+			lbot._by = bcharOff >> 2;
 			assert_lt(lbot._by, (int)gp._sideGbwtSz);
-			lbot._bp = lbot._charOff & 0x3;
+            lbot._bp = bcharOff & 3;
+            // no need for any prefetch, same _sideByteOff
 		} else {
-			lbot.initFromRow(bot, gp, gfm);
+            lbot.initFromRow(bot, gp, gfm, prefetch);
 		}
 	}
+
+	static void prefetchFromTopBot(
+		TIndexOffU top,
+		TIndexOffU bot,
+		const GFMParams<index_t>& gp,
+		const uint8_t* gfm)
+		{
+			prefetchFromRow(top, gp, gfm);
+			// not trying to be smart... prefetches are cheap
+			prefetchFromRow(bot, gp, gfm);
+		}
 
 	/**
 	 * Calculate SideLocus based on a row and other relevant
@@ -378,21 +393,55 @@ struct SideLocus {
 	void initFromRow(
                      index_t row,
                      const GFMParams<index_t>& gp,
-                     const uint8_t* gfm) {
+                     const uint8_t* gfm,
+                     bool prefetch=true) {
 		const index_t sideSz      = gp._sideSz;
 		// Side length is hard-coded for now; this allows the compiler
 		// to do clever things to accelerate / and %.
-		_sideNum                  = row / gp._sideGbwtLen;
-		assert_lt(_sideNum, gp._numSides);
-		_charOff                  = row % gp._sideGbwtLen;
-		_sideByteOff              = _sideNum * sideSz;
+		const TIndexOffU sideNum  = row / (48*OFF_SIZE);
+		assert_lt(sideNum, ep._numSides);
+		const int32_t charOff     = row % (48*OFF_SIZE);
+		_sideNum                  = sideNum;
+		_charOff                  = charOff;
+		const TIndexOffU sByteOff = sideNum * sideSz;
+		if (prefetch) {
+			__builtin_prefetch(gfm + sByteOff);
+#if (OFF_SIZE>4)
+			__builtin_prefetch(gfm + sByteOff + 64); //64 byte cache lines
+#endif
+        }
+
+		_sideByteOff              = sByteOff;
 		assert_leq(row, gp._gbwtLen);
 		assert_leq(_sideByteOff + sideSz, gp._gbwtTotSz);
 		// Tons of cache misses on the next line
-		_by = _charOff >> 2; // byte within side
+		_by = charOff >> 2; // byte within side
 		assert_lt(_by, (int)gp._sideGbwtSz);
-		_bp = _charOff & 0x3;  // bit-pair within byte
+		_bp = charOff & 0x3;  // bit-pair within byte
 	}
+
+
+	/**
+ 	 * Prefetch cache lines used by side(row). 
+ 	 */ 
+	static void prefetchFromRow(TIndexOffU row, const GFMParams<index_t>& gp, const uint8_t* gfm) {
+		const int32_t sideSz         = gp._sideSz;
+		// Side length is hard-coded for now; this allows the compiler
+		// to do clever things to accelerate / and %.
+		const TIndexOffU sideNum     = row / (48*OFF_SIZE);
+		const TIndexOffU sideByteOff = sideNum * sideSz;
+		__builtin_prefetch(gfm + sideByteOff);
+#if (OFF_SIZE>4)
+		__builtin_prefetch(gfm + sideByteOff + 64); //64 byte cache lines
+#endif
+	}
+
+	void prefetch(const uint8_t* gfm) const {
+                __builtin_prefetch(gfm + _sideByteOff);
+#if (OFF_SIZE>4)
+                __builtin_prefetch(gfm + _sideByteOff + 64); //64 byte cache lines
+#endif
+    }
     
     /**
      * Init two SideLocus objects from a top/bot pair, using the result
@@ -3517,6 +3566,9 @@ public:
 		assert_eq(0, tops[1]); assert_eq(0, bots[1]);
 		assert_eq(0, tops[2]); assert_eq(0, bots[2]);
 		assert_eq(0, tops[3]); assert_eq(0, bots[3]);
+        // hopefully ltop and lbot were already prefetched
+        // if not, we have time to prefetch lbot while procssing ltop
+        lbot.prefetch(this->gfm());
 		countBt2SideEx(ltop, tops);
 		countBt2SideEx(lbot, bots);
 #ifndef NDEBUG

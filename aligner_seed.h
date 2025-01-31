@@ -1544,6 +1544,13 @@ protected:
 		Constraint overall,      // overall constraints
 		DoublyLinkedList<Edit> *prevEdit);  // previous edit
 	
+	inline void prefetchNextLocsBi(
+		TIndexOffU topf,              // top in BWT
+		TIndexOffU botf,              // bot in BWT
+		TIndexOffU topb,              // top in BWT'
+		TIndexOffU botb,              // bot in BWT'
+		int step);                  // step to get ready for
+
 	/**
 	 * Get tloc and bloc ready for the next step.
 	 */
@@ -2357,6 +2364,41 @@ bool SeedAligner<index_t>::oneMmSearch(
 	return results;
 }
 
+template <typename index_t>
+inline void
+SeedAligner<index_t>::prefetchNextLocsBi(
+        TIndexOffU topf,              // top in BWT
+        TIndexOffU botf,              // bot in BWT
+        TIndexOffU topb,              // top in BWT'
+        TIndexOffU botb,              // bot in BWT'
+        int step                    // step to get ready for
+        )
+{
+	if(step == (int)s_->steps.size()) return; // no more steps!
+	// Which direction are we going in next?
+	if(s_->steps[step] > 0) {
+		// Left to right; use BWT'
+		if(botb - topb == 1) {
+			// Already down to 1 row; just init top locus
+			SideLocus<index_t>::prefetchFromRow(
+				topb, ebwtBw_->eh(), ebwtBw_->ebwt());
+		} else {
+			SideLocus<index_t>::prefetchFromTopBot(
+				topb, botb, ebwtBw_->eh(), ebwtBw_->ebwt());
+		}
+	} else {
+		// Right to left; use BWT
+		if(botf - topf == 1) {
+			// Already down to 1 row; just init top locus
+			SideLocus<index_t>::prefetchFromRow(
+				topf, ebwtFw_->eh(), ebwtFw_->ebwt());
+		} else {
+			SideLocus<index_t>::prefetchFromTopBot(
+				topf, botf, ebwtFw_->eh(), ebwtFw_->ebwt());
+		}
+	}
+}
+
 /**
  * Wrapper for initial invcation of searchSeed.
  */
@@ -2765,6 +2807,8 @@ bool SeedAligner<index_t>::searchSeedBi(
 		bool ltr = off > 0;
 		const Ebwt<index_t>* ebwt = ltr ? ebwtBw_ : ebwtFw_;
 		assert(ebwt != NULL);
+		off = abs(off)-1;
+		__builtin_prefetch(&((*seq_)[off]));
 		if(ltr) {
 			tp[0] = tp[1] = tp[2] = tp[3] = topf;
 			bp[0] = bp[1] = bp[2] = bp[3] = botf;
@@ -2786,13 +2830,15 @@ bool SeedAligner<index_t>::searchSeedBi(
 		}
 		index_t *tf = ltr ? tp : t, *tb = ltr ? t : tp;
 		index_t *bf = ltr ? bp : b, *bb = ltr ? b : bp;
-		off = abs(off)-1;
+		int c = (*seq_)[off];  assert_range(0, 4, c);
+		// not 100% sure we need it, but redundant prefetches are not dangerous
+		// and helps in the average case
+		prefetchNextLocsBi(tf[c], bf[c], tb[c], bb[c], i+1);
 		//
 		bool leaveZone = s.zones[i].first < 0;
 		//bool leaveZoneIns = zones_[i].second < 0;
 		Constraint& cons    = *zones[abs(s.zones[i].first)];
 		Constraint& insCons = *zones[abs(s.zones[i].second)];
-		int c = (*seq_)[off];  assert_range(0, 4, c);
 		int q = (*qual_)[off];
 		// Is it legal for us to advance on characters other than 'c'?
 		if(!(cons.mustMatch() && !overall.mustMatch()) || c == 4) {
