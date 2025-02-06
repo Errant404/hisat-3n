@@ -27,8 +27,8 @@
 #include <mutex>
 #include <thread>
 #include <cassert>
-#include <unordered_map>
 #include "alignment_3n_table.h"
+#include <tbb/concurrent_hash_map.h>
 
 using namespace std;
 
@@ -46,6 +46,8 @@ public:
     char quality;
     bool removed;
 
+    uniqueID() : readNameID(0), isConverted(false), quality(0), removed(false) {}
+
     uniqueID(unsigned long long InReadNameID,
              bool InIsConverted,
              char& InQual){
@@ -60,17 +62,28 @@ public:
  * basic class to store reference position information
  */
 class Position{
-    // TODO: 使用细粒度锁
-    mutex mutex_;
+private:
+    mutex converted_mutex_;
+    mutex unconverted_mutex_;
+
+    struct HashCompare {
+        static size_t hash(const unsigned long long& key) {
+            return key;
+        }
+        static bool equal(const unsigned long long& key1, const unsigned long long& key2) {
+            return key1 == key2;
+        }
+    };
+
 public:
-    string chromosome; // reference chromosome name
+    string chromosome;      // reference chromosome name
     long long int location; // 1-based position
-    char strand; // +(REF) or -(REF-RC)
-    string convertedQualities; // each char is a mapping quality on this position for converted base.
-    string unconvertedQualities; // each char is a mapping quality on this position for unconverted base.
-    // 使用哈希表存储uniqueIDs
-    unordered_map<unsigned long long, uniqueID> uniqueIDs; // each value represent a readName which contributed the base information.
-                              // readNameIDs is to make sure no read contribute 2 times in same position.
+    char strand;           // +(REF) or -(REF-RC)
+    string convertedQualities;    // each char is a mapping quality on this position for converted base.
+    string unconvertedQualities;  // each char is a mapping quality on this position for unconverted base.
+    
+    typedef tbb::concurrent_hash_map<unsigned long long, uniqueID, HashCompare> IdMap;
+    IdMap uniqueIDs; // thread-safe hash map
 
     void initialize() {
         chromosome.clear();
@@ -106,37 +119,42 @@ public:
     }
 
     /**
-     * 使用哈希表重新实现appendReadNameID
+     * 使用并发哈希表和细粒度锁重新实现appendReadNameID
      * 返回true表示新增了readNameID,false表示已存在或被移除
      */
     bool appendReadNameID(PosQuality& InBase, Alignment& InAlignment) {
-        auto it = uniqueIDs.find(InAlignment.readNameID);
+        IdMap::accessor acc;
         
-        // 如果是新的readNameID
-        if (it == uniqueIDs.end()) {
-            uniqueIDs.emplace(InAlignment.readNameID, 
-                            uniqueID(InAlignment.readNameID, InBase.converted, InBase.qual));
+        // 尝试插入,如果key不存在则插入并返回true
+        if(uniqueIDs.insert(acc, InAlignment.readNameID)) {
+            acc->second = uniqueID(InAlignment.readNameID, InBase.converted, InBase.qual);
             return true;
         }
-
+        
+        // key已存在,获取现有value
+        auto& existingID = acc->second;
+        
         // 如果该ID已被移除
-        if (it->second.removed) {
-            return false;
+        if(existingID.removed) {
+            return false; 
         }
 
-        // 如果转换状态不一致
-        if (it->second.isConverted != InBase.converted) {
-            it->second.removed = true;
-            if (it->second.isConverted) {
-                for (int i = 0; i < convertedQualities.size(); i++) {
-                    if (convertedQualities[i] == InBase.qual) {
+        // 如果转换状态不一致,则标记为移除并从相应的qualities中删除
+        if(existingID.isConverted != InBase.converted) {
+            existingID.removed = true;
+            
+            if(existingID.isConverted) {
+                lock_guard<mutex> lock(converted_mutex_);
+                for(int i = 0; i < convertedQualities.size(); i++) {
+                    if(convertedQualities[i] == InBase.qual) {
                         convertedQualities.erase(convertedQualities.begin()+i);
                         return false;
                     }
                 }
             } else {
-                for (int i = 0; i < unconvertedQualities.size(); i++) {
-                    if (unconvertedQualities[i] == InBase.qual) {
+                lock_guard<mutex> lock(unconverted_mutex_);
+                for(int i = 0; i < unconvertedQualities.size(); i++) {
+                    if(unconvertedQualities[i] == InBase.qual) {
                         unconvertedQualities.erase(unconvertedQualities.begin()+i);
                         return false;
                     }
@@ -147,18 +165,18 @@ public:
     }
 
     /**
-     * append the SAM information into this position.
+     * 使用细粒度锁重新实现appendBase
      */
-    void appendBase (PosQuality& input, Alignment& a) {
-        mutex_.lock();
-        if (appendReadNameID(input,a)) {
-            if (input.converted) {
+    void appendBase(PosQuality& input, Alignment& a) {
+        if(appendReadNameID(input, a)) {
+            if(input.converted) {
+                lock_guard<mutex> lock(converted_mutex_);
                 convertedQualities += input.qual;
             } else {
+                lock_guard<mutex> lock(unconverted_mutex_);
                 unconvertedQualities += input.qual;
             }
         }
-        mutex_.unlock();
     }
 };
 
