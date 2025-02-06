@@ -27,6 +27,7 @@
 #include <mutex>
 #include <thread>
 #include <cassert>
+#include <unordered_map>
 #include "alignment_3n_table.h"
 
 using namespace std;
@@ -59,6 +60,7 @@ public:
  * basic class to store reference position information
  */
 class Position{
+    // TODO: 使用细粒度锁
     mutex mutex_;
 public:
     string chromosome; // reference chromosome name
@@ -66,7 +68,8 @@ public:
     char strand; // +(REF) or -(REF-RC)
     string convertedQualities; // each char is a mapping quality on this position for converted base.
     string unconvertedQualities; // each char is a mapping quality on this position for unconverted base.
-    vector<uniqueID> uniqueIDs; // each value represent a readName which contributed the base information.
+    // 使用哈希表存储uniqueIDs
+    unordered_map<unsigned long long, uniqueID> uniqueIDs; // each value represent a readName which contributed the base information.
                               // readNameIDs is to make sure no read contribute 2 times in same position.
 
     void initialize() {
@@ -75,7 +78,7 @@ public:
         strand = '?';
         convertedQualities.clear();
         unconvertedQualities.clear();
-        vector<uniqueID>().swap(uniqueIDs);
+        uniqueIDs.clear();
     }
 
     Position(){
@@ -103,68 +106,44 @@ public:
     }
 
     /**
-     * binary search of readNameID in readNameIDs.
-     * always return a index.
-     * if cannot find, return the index which has bigger value than input readNameID.
-     */
-    int searchReadNameID (unsigned long long&readNameID, int start, int end) {
-        if (uniqueIDs.empty()) {
-            return 0;
-        }
-        if (start <= end) {
-            int middle = (start + end) / 2;
-            if (uniqueIDs[middle].readNameID == readNameID) {
-                return middle;
-            }
-            if (uniqueIDs[middle].readNameID > readNameID) {
-                return searchReadNameID(readNameID, start, middle-1);
-            }
-            return searchReadNameID(readNameID, middle+1, end);
-        }
-        return start; // return the bigger one
-    }
-
-
-    /**
-     * with a input readNameID, add it into readNameIDs.
-     * if the input readNameID already exist in readNameIDs, return false.
+     * 使用哈希表重新实现appendReadNameID
+     * 返回true表示新增了readNameID,false表示已存在或被移除
      */
     bool appendReadNameID(PosQuality& InBase, Alignment& InAlignment) {
-        int idCount = uniqueIDs.size();
-        if (idCount == 0 || InAlignment.readNameID > uniqueIDs.back().readNameID) {
-            uniqueIDs.emplace_back(InAlignment.readNameID, InBase.converted, InBase.qual);
+        auto it = uniqueIDs.find(InAlignment.readNameID);
+        
+        // 如果是新的readNameID
+        if (it == uniqueIDs.end()) {
+            uniqueIDs.emplace(InAlignment.readNameID, 
+                            uniqueID(InAlignment.readNameID, InBase.converted, InBase.qual));
             return true;
         }
-        int index = searchReadNameID(InAlignment.readNameID, 0, idCount);
-        if (uniqueIDs[index].readNameID == InAlignment.readNameID) {
-            // if the new base is consistent with exist base's conversion status, ignore
-            // otherwise, delete the exist conversion status
-            if (uniqueIDs[index].removed) {
-                return false;
-            }
-            if (uniqueIDs[index].isConverted != InBase.converted) {
-                uniqueIDs[index].removed = true;
-                if (uniqueIDs[index].isConverted) {
-                    for (int i = 0; i < convertedQualities.size(); i++) {
-                        if (convertedQualities[i] == InBase.qual) {
-                            convertedQualities.erase(convertedQualities.begin()+i);
-                            return false;
-                        }
+
+        // 如果该ID已被移除
+        if (it->second.removed) {
+            return false;
+        }
+
+        // 如果转换状态不一致
+        if (it->second.isConverted != InBase.converted) {
+            it->second.removed = true;
+            if (it->second.isConverted) {
+                for (int i = 0; i < convertedQualities.size(); i++) {
+                    if (convertedQualities[i] == InBase.qual) {
+                        convertedQualities.erase(convertedQualities.begin()+i);
+                        return false;
                     }
-                } else {
-                    for (int i = 0; i < unconvertedQualities.size(); i++) {
-                        if (unconvertedQualities[i] == InBase.qual) {
-                            unconvertedQualities.erase(unconvertedQualities.begin()+i);
-                            return false;
-                        }
+                }
+            } else {
+                for (int i = 0; i < unconvertedQualities.size(); i++) {
+                    if (unconvertedQualities[i] == InBase.qual) {
+                        unconvertedQualities.erase(unconvertedQualities.begin()+i);
+                        return false;
                     }
                 }
             }
-            return false;
-        } else {
-            uniqueIDs.emplace(uniqueIDs.begin()+index, InAlignment.readNameID, InBase.converted, InBase.qual);
-            return true;
         }
+        return false;
     }
 
     /**
@@ -386,7 +365,7 @@ public:
             if (refPositions[index]->empty() || refPositions[index]->strand == '?') {
                 returnPosition(refPositions[index]);
             } else {
-                vector<uniqueID>().swap(refPositions[index]->uniqueIDs);
+                refPositions[index]->uniqueIDs.clear();
                 outputPositionPool.push(refPositions[index]);
             }
         }
