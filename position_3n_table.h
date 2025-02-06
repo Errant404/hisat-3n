@@ -194,31 +194,24 @@ public:
     SafeQueue<Position*> freePositionPool; // pool to store free position pointer for reference position.
     SafeQueue<Position*> outputPositionPool; // pool to store the reference position which is loaded and ready to output.
     bool working;
-    mutex mutex_;
     long long int refCoveredPosition; // this is the last position in reference chromosome we loaded in refPositions.
     ifstream refFile;
-    vector<mutex*> workerLock; // one lock for one worker thread.
     int nThreads = 1;
     ChromosomeFilePositions chromosomePos; // store the chromosome name and it's streamPos. To quickly find new chromosome in file.
     bool addedChrName = false;
     bool removedChrName = false;
+    atomic_size_t numTasks {0};
 
     Positions(string inputRefFileName, int inputNThreads, bool inputAddedChrName, bool inputRemovedChrName) {
         working = true;
         nThreads = inputNThreads;
         addedChrName = inputAddedChrName;
         removedChrName = inputRemovedChrName;
-        for (int i = 0; i < nThreads; i++) {
-            workerLock.push_back(new mutex);
-        }
         refFile.open(inputRefFileName, ios_base::in);
         LoadChromosomeNamesPos();
     }
 
     ~Positions() {
-        for (int i = 0; i < workerLock.size(); i++) {
-            delete workerLock[i];
-        }
         Position* pos;
         while(freePositionPool.popFront(pos)) {
             delete pos;
@@ -307,14 +300,8 @@ public:
         location += line.size();
     }
 
-    /**
-     * if we can go through all the workerLock, that means no worker is appending new position.
-     */
     void appendingFinished() {
-        for (int i = 0; i < nThreads; i++) {
-            workerLock[i]->lock();
-            workerLock[i]->unlock();
-        }
+        while (numTasks) {}
     }
 
     /**
@@ -527,9 +514,7 @@ public:
         Alignment newAlignment;
 
         while (working) {
-            workerLock[threadID]->lock();
             if(!linePool.popFront(line)) {
-                workerLock[threadID]->unlock();
                 this_thread::sleep_for (std::chrono::nanoseconds(1));
                 continue;
             }
@@ -539,7 +524,7 @@ public:
             newAlignment.parse(line);
             returnLine(line);
             appendPositions(newAlignment);
-            workerLock[threadID]->unlock();
+            numTasks--;
         }
     }
 };

@@ -311,6 +311,7 @@ int hisat_3n_table()
             throw 1;
         }
         positions->linePool.push(line);
+        positions->numTasks++;
         lastPos = samPos;
     }
     //}
