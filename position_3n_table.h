@@ -29,6 +29,7 @@
 #include <cassert>
 #include "alignment_3n_table.h"
 #include <tbb/concurrent_hash_map.h>
+#include <future>
 
 using namespace std;
 
@@ -184,6 +185,55 @@ public:
  * store all reference position in this class.
  */
 class Positions{
+private:
+    std::future<vector<Position*>> nextBlockFuture;
+    bool isPreloadingNext = false;
+
+    vector<Position*> preloadNextBlock() {
+        vector<Position*> nextBlock;
+        string line;
+        long long int nextBlockEnd = refCoveredPosition + loadingBlockSize;
+        
+        while (refFile.good()) {
+            getline(refFile, line);
+            if (line.front() == '>') {
+                return nextBlock;
+            } else {
+                if (line.empty()) continue;
+                
+                for (int i = 0; i < line.size(); i++) {
+                    line[i] = toupper(line[i]);
+                }
+
+                Position* newPos;
+                for (int i = 0; i < line.size(); i++) {
+                    getFreePosition(newPos);
+                    newPos->set(chromosome, location + i);
+                    char* b = &line[i];
+                    if (CG_only) {
+                        if (lastBase == 'C' && *b == 'G') {
+                            if (!nextBlock.empty()) nextBlock.back()->set('+');
+                            newPos->set('-');
+                        }
+                    } else {
+                        if (*b == convertFrom) {
+                            newPos->set('+');
+                        } else if (*b == convertFromComplement) {
+                            newPos->set('-');
+                        }
+                    }
+                    nextBlock.push_back(newPos);
+                    lastBase = *b;
+                }
+                location += line.size();
+                if (location >= nextBlockEnd) {
+                    return nextBlock;
+                }
+            }
+        }
+        return nextBlock;
+    }
+
 public:
     vector<Position*> refPositions; // the pool of all current reference position.
     string chromosome; // current reference chromosome name.
@@ -413,28 +463,40 @@ public:
      * if we meet next chromosome, return false. Else, return ture.
      */
     void loadMore() {
-        refCoveredPosition += loadingBlockSize;
-        string line;
-        while (refFile.good()) {
-            getline(refFile, line);
-            if (line.front() == '>') { // meet next chromosome, return.
-                return ;
-            } else {
-                if (line.empty()) { continue; }
-
-                // change all base to upper case
-                for (int i = 0; i < line.size(); i++) {
-                    line[i] = toupper(line[i]);
-                }
-
-                appendRefPosition(line);
-                if (location >= refCoveredPosition) {
-                    return ;
+        if (isPreloadingNext) {
+            // 等待预加载完成并合并结果
+            auto nextBlock = nextBlockFuture.get();
+            refPositions.insert(refPositions.end(), nextBlock.begin(), nextBlock.end());
+            refCoveredPosition += loadingBlockSize;
+            isPreloadingNext = false;
+        } else {
+            // 如果没有预加载,则同步加载
+            string line;
+            refCoveredPosition += loadingBlockSize;
+            while (refFile.good()) {
+                getline(refFile, line);
+                if (line.front() == '>') {
+                    return;
+                } else {
+                    if (line.empty()) continue;
+                    
+                    for (int i = 0; i < line.size(); i++) {
+                        line[i] = toupper(line[i]);
+                    }
+                    
+                    appendRefPosition(line);
+                    if (location >= refCoveredPosition) {
+                        break;
+                    }
                 }
             }
         }
-    }
 
+        // 启动下一块的预加载
+        nextBlockFuture = std::async(std::launch::async, 
+            &Positions::preloadNextBlock, this);
+        isPreloadingNext = true;
+    }
 
     /**
      * add position information from Alignment into ref position.
