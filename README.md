@@ -38,8 +38,15 @@ Install
 
     git clone https://github.com/DaehwanKimLab/hisat2.git hisat-3n
     cd hisat-3n
-    git checkout -b hisat-3n origin/hisat-3n
-    make
+    git checkout hisat-3n origin/hisat-3n
+    git submodule init && git submodule update
+
+    conda create -n m5c
+    conda install bioconda::htslib conda-forge::tbb
+    
+    cmake -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx -S . -B build
+    cmake --build build -- -j$(nproc)
+
 
 Build a HISAT-3N index with `hisat-3n-build`
 -----------
