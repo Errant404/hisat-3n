@@ -230,19 +230,14 @@ bool getSAMChromosomePos(string* line, string& chr, long long int& pos) {
     return false;
 }
 
-/*void opeInFile(ifstream& f) {
-    if (alignmentFileName == "-") {
-        f = cin;
-    } else {
-        ifstream alignmentFile;
-        alignmentFile.open(alignmentFileName, ios_base::in);
-        return alignmentFile;
-    }
-}*/
-
-
+// main function, initially 2 load loadingBlockSize (2,000,000) bp of reference, set reloadPos to 1 loadingBlockSize, then load SAM data.
+// when the samPos larger than the reloadPos load 1 loadingBlockSize bp of reference.
+// when the samChromosome is different to current chromosome, finish all sam position and output all.
 int hisat_3n_table()
 {
+    std::ios::sync_with_stdio(false);
+    std::cin.tie(nullptr);
+    
     positions = new Positions(refFileName, nThreads, addedChrName, removedChrName);
 
     // open #nThreads workers
@@ -255,9 +250,6 @@ int hisat_3n_table()
     thread outputThread;
     outputThread = thread(&Positions::outputFunction, positions, outputFileName);
 
-    // main function, initially 2 load loadingBlockSize (2,000,000) bp of reference, set reloadPos to 1 loadingBlockSize, then load SAM data.
-    // when the samPos larger than the reloadPos load 1 loadingBlockSize bp of reference.
-    // when the samChromosome is different to current chromosome, finish all sam position and output all.
     ifstream inputFile;
     istream *alignmentFile = &cin;
     if (!standardInMode) {
