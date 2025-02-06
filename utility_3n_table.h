@@ -26,6 +26,7 @@
 #include <queue>
 #include <algorithm>
 #include <string>
+#include <tbb/concurrent_queue.h>
 
 using namespace std;
 
@@ -194,37 +195,11 @@ public:
 template <typename T>
 class SafeQueue {
 private:
-    mutex mutex_;
-    queue<T> queue_;
-
-    string getReadName(string* line){
-        int startPosition = 0;
-        int endPosition;
-
-        endPosition = line->find("\t", startPosition);
-        string readName = line->substr(startPosition, endPosition - startPosition);
-        return readName;
-    }
+    tbb::concurrent_queue<T> queue_;
 
 public:
-    void pop() {
-        mutex_.lock();
-        queue_.pop();
-        mutex_.unlock();
-    }
-
-    T front() {
-        mutex_.lock();
-        T value = queue_.front();
-        mutex_.unlock();
-        return value;
-    }
-
     int size() {
-        mutex_.lock();
-        int s = queue_.size();
-        mutex_.unlock();
-        return s;
+        return queue_.unsafe_size();
     }
 
     /**
@@ -232,27 +207,15 @@ public:
      * return false if the queue is empty.
      */
     bool popFront(T& value) {
-        mutex_.lock();
-        bool isEmpty = queue_.empty();
-        if (!isEmpty) {
-            value = queue_.front();
-            queue_.pop();
-        }
-        mutex_.unlock();
-        return !isEmpty;
+        return queue_.try_pop(value);
     }
 
     void push(T value) {
-        mutex_.lock();
         queue_.push(value);
-        mutex_.unlock();
     }
 
     bool empty() {
-        mutex_.lock();
-        bool check = queue_.empty();
-        mutex_.unlock();
-        return check;
+        return queue_.empty();
     }
 };
 
