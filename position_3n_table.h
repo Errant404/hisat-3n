@@ -193,10 +193,12 @@ public:
     SafeQueue<string*> freeLinePool; // pool to store free string pointer for SAM line.
     SafeQueue<Position*> freePositionPool; // pool to store free position pointer for reference position.
     SafeQueue<Position*> outputPositionPool; // pool to store the reference position which is loaded and ready to output.
+    SafeQueue<vector<string*>*> batchLinePool; // 存储批量的SAM行
     bool working;
     long long int refCoveredPosition; // this is the last position in reference chromosome we loaded in refPositions.
     ifstream refFile;
     int nThreads = 1;
+    int batchSize; // 批处理大小
     ChromosomeFilePositions chromosomePos; // store the chromosome name and it's streamPos. To quickly find new chromosome in file.
     bool addedChrName = false;
     bool removedChrName = false;
@@ -205,6 +207,7 @@ public:
     Positions(string inputRefFileName, int inputNThreads, bool inputAddedChrName, bool inputRemovedChrName) {
         working = true;
         nThreads = inputNThreads;
+        batchSize = nThreads * 1000; // 设置批大小为线程数的1000倍
         addedChrName = inputAddedChrName;
         removedChrName = inputRemovedChrName;
         refFile.open(inputRefFileName, ios_base::in);
@@ -510,21 +513,27 @@ public:
      * it take the SAM line from linePool, parse it.
      */
     void append(int threadID) {
-        string* line;
+        vector<string*> localBatch;
         Alignment newAlignment;
 
         while (working) {
-            if(!linePool.popFront(line)) {
+            vector<string*>* batch = nullptr;
+            if(!batchLinePool.popFront(batch)) {
                 this_thread::sleep_for (std::chrono::nanoseconds(1));
                 continue;
             }
-            while (refPositions.empty()) {
-                this_thread::sleep_for (std::chrono::microseconds(1));
+
+            for(auto line : *batch) {
+                while (refPositions.empty()) {
+                    this_thread::sleep_for (std::chrono::microseconds(1));
+                }
+                newAlignment.parse(line);
+                returnLine(line);
+                appendPositions(newAlignment);
+                numTasks--;
             }
-            newAlignment.parse(line);
-            returnLine(line);
-            appendPositions(newAlignment);
-            numTasks--;
+            
+            delete batch;
         }
     }
 };

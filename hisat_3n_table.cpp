@@ -263,6 +263,9 @@ int hisat_3n_table()
     long long int reloadPos; // the position in reference that we need to reload.
     long long int lastPos = 0; // the position on last SAM line. compare lastPos with samPos to make sure the SAM is sorted.
 
+    vector<string*>* currentBatch = new vector<string*>();
+    currentBatch->reserve(positions->batchSize);
+
     while (alignmentFile->good()) {
         positions->getFreeStringPointer(line);
         if (!getline(*alignmentFile, *line)) {
@@ -274,20 +277,28 @@ int hisat_3n_table()
             positions->returnLine(line);
             continue;
         }
-        // limit the linePool size to save memory
-        while(positions->linePool.size() > 1000 * nThreads) {
+
+        // limit total queued lines to save memory
+        while(positions->batchLinePool.size() * positions->batchSize > 10000 * positions->nThreads) {
             this_thread::sleep_for (std::chrono::microseconds(1));
         }
+
         // if the SAM line is empty or unmapped, get the next SAM line.
         if (!getSAMChromosomePos(line, samChromosome, samPos)) {
             positions->returnLine(line);
             continue;
         }
-        // if the samChromosome is different than current positions' chromosome, finish all SAM line.
-        // then load a new reference chromosome.
+
+        // if chromosome changes, process current batch first
         if (samChromosome != positions->chromosome) {
+            if(!currentBatch->empty()) {
+                positions->batchLinePool.push(currentBatch);
+                currentBatch = new vector<string*>();
+                currentBatch->reserve(positions->batchSize);
+            }
+            
             // wait all line is processed
-            while (!positions->linePool.empty() || positions->outputPositionPool.size() > 100000) {
+            while (!positions->batchLinePool.empty() || positions->outputPositionPool.size() > 100000) {
                 this_thread::sleep_for (std::chrono::microseconds(1));
             }
             positions->appendingFinished();
@@ -296,9 +307,16 @@ int hisat_3n_table()
             reloadPos = loadingBlockSize;
             lastPos = 0;
         }
-        // if the samPos is larger than reloadPos, load 1 loadingBlockSize bp in from reference.
+
+        // if position exceeds reload point, process current batch first
         while (samPos > reloadPos) {
-            while (!positions->linePool.empty() || positions->outputPositionPool.size() > 100000) {
+            if(!currentBatch->empty()) {
+                positions->batchLinePool.push(currentBatch);
+                currentBatch = new vector<string*>();
+                currentBatch->reserve(positions->batchSize);
+            }
+
+            while (!positions->batchLinePool.empty() || positions->outputPositionPool.size() > 100000) {
                 this_thread::sleep_for (std::chrono::microseconds(1));
             }
             positions->appendingFinished();
@@ -306,15 +324,31 @@ int hisat_3n_table()
             positions->loadMore();
             reloadPos += loadingBlockSize;
         }
+
         if (lastPos > samPos) {
             cerr << "The input alignment file is not sorted. Please use sorted SAM file as alignment file." << endl;
             throw 1;
         }
-        positions->linePool.push(line);
+
+        currentBatch->push_back(line);
         positions->numTasks++;
         lastPos = samPos;
+
+        // 当达到批处理大小时提交当前批次
+        if(currentBatch->size() >= positions->batchSize) {
+            positions->batchLinePool.push(currentBatch);
+            currentBatch = new vector<string*>();
+            currentBatch->reserve(positions->batchSize);
+        }
     }
-    //}
+
+    // 处理最后剩余的batch
+    if(!currentBatch->empty()) {
+        positions->batchLinePool.push(currentBatch);
+    } else {
+        delete currentBatch;
+    }
+
     if (!standardInMode) {
         inputFile.close();
     }
