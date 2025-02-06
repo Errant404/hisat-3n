@@ -18,24 +18,33 @@ set(CMAKE_VERBOSE_MAKEFILE true)
 set(CMAKE_EXPORT_COMPILE_COMMANDS on)
 set(NCBI_NGS_DIR ${NCBI_NGS_DIR})
 
-# Common Flag
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall")
-
-# Debug/Release Flag
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -funroll-loops")
-
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
-
-if (COMPILER_SUPPORTS_AVX2)
-	add_definitions(-DSSE_AVX2)
-    add_compile_options(-mavx2 -faligned-new)
-else ()
-	add_compile_options(-msse2)
+find_path(HTSLIB_PATH NAMES htslib PATHS ../)
+if (HTSLIB_PATH)
+	include_directories(${HTSLIB_PATH}/htslib)
+	link_directories(${HTSLIB_PATH}/htslib)
+	message(STATUS "htslib found at ${HTSLIB_PATH}/htslib")
+elseif(DEFINED ENV{CONDA_PREFIX})
+	set(CONDA_PREFIX $ENV{CONDA_PREFIX})
+	include_directories(${CONDA_PREFIX}/include)
+	link_directories(${CONDA_PREFIX}/lib)
+	message(STATUS "htslib found at ${CONDA_PREFIX}/lib")
 endif()
 
+# Common Flag
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -Wall -g")
+
+# Debug/Release Flag
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native")
+
 set(INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation directory for executables")
+
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-mavx2 HAVE_AVX2)
+if(HAVE_AVX2)
+	add_definitions(-DSSE_AVX2)
+	add_compile_options(-faligned-new)
+endif()
 
 if(MINGW OR CYGWIN)
     option(BOWTIE_MM "Memory mapped files not supported on Windows" OFF)
@@ -54,6 +63,7 @@ set(HISAT2_BIN_LIST
 	hisat2-inspect-s
 	hisat2-inspect-l
 	hisat2-repeat
+	hisat-3n-table
     )
 
 set(HISAT2_LIB_LIST
@@ -177,11 +187,9 @@ add_definitions(
 
 include_directories(${SOURCE_DIR}/third_party)
 
-if(NOT NO_TBB)
-  find_package(TBB REQUIRED)
-  link_libraries(TBB::tbb)
-  add_definitions(-DWITH_TBB)
-endif()
+find_package(TBB REQUIRED)
+link_libraries(TBB::tbb)
+add_definitions(-DWITH_TBB)
 
 find_package(Threads REQUIRED)
 link_libraries(Threads::Threads)
@@ -203,7 +211,6 @@ if(BOWTIE_SHARED_MEM)
 	add_definitions(-DBOWTIE_SHARED_MEM)
 endif()
 
-add_definitions(-DNO_SPINLOCK)
 add_definitions(-DNDEBUG)
 
 include_directories(${PROJECT_SOURCE_DIR})
@@ -241,11 +248,12 @@ target_compile_options(hisat2lib_shared PUBLIC "-fPIC" "-DHISAT2_BUILD_LIB")
 target_include_directories(hisat2lib_static PUBLIC hisat2lib)
 target_include_directories(hisat2lib_shared PUBLIC hisat2lib)
 
+target_link_libraries(hisat-3n-table PUBLIC -lhts)
+
 if(USE_SRA)
 	if(NOT NCBI_NGS_DIR)
 		message(FATAL_ERROR "You should set NCBI_NGS_DIR path. cmake3 .... -DNCBI_NGS_DIR=/path/to/ngs")
 	endif()
-	#set(NCBI_NGS_DIR /home/parkch/.local/ngs)
 
 	target_compile_options(hisat2-align-s PUBLIC "-DUSE_SRA")
 	target_compile_options(hisat2-align-l PUBLIC "-DUSE_SRA")
@@ -265,18 +273,11 @@ endif()
 
 add_custom_target(hisat2-all)
 add_dependencies(hisat2-all
-		hisat2-align-s
-		hisat2-align-l
-		hisat2-build-s
-		hisat2-build-l
-		hisat2-inspect-s
-		hisat2-inspect-l
-		hisat2-repeat
-		hisat-3n-table)
-
-
-#
-# Examples
-#
-#target_compile_options(hisat2-inspect-s PUBLIC $<$<CONFIG:DEBUG>:-DDEBUGONLY>)
-#target_compile_options(hisat2-inspect-s PUBLIC $<$<CONFIG:RELEASE>:-DRELEASEONLY>)
+				 hisat2-align-s
+				 hisat2-align-l
+				 hisat2-build-s
+				 hisat2-build-l
+				 hisat2-inspect-s
+				 hisat2-inspect-l
+				 hisat2-repeat
+				 hisat-3n-table)
