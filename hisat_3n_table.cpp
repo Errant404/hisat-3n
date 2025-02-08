@@ -39,7 +39,7 @@ char convertFromComplement;
 char convertToComplement;
 bool addedChrName = false;
 bool removedChrName = false;
-
+tbb::task_group tg;
 
 Positions* positions;
 
@@ -237,14 +237,9 @@ int hisat_3n_table()
 {
     std::ios::sync_with_stdio(false);
     std::cin.tie(nullptr);
+    tbb::global_control control(tbb::global_control::max_allowed_parallelism, nThreads);
     
-    positions = new Positions(refFileName, nThreads, addedChrName, removedChrName);
-
-    // open #nThreads workers
-    vector<thread*> workers;
-    for (int i = 0; i < nThreads; i++) {
-        workers.push_back(new thread(&Positions::append, positions, i));
-    }
+    positions = new Positions(refFileName, addedChrName, removedChrName);
 
     // open a output thread
     thread outputThread;
@@ -264,32 +259,24 @@ int hisat_3n_table()
     long long int lastPos = 0; // the position on last SAM line. compare lastPos with samPos to make sure the SAM is sorted.
 
     while (alignmentFile->good()) {
-        positions->getFreeStringPointer(line);
+        line = new string();
         if (!getline(*alignmentFile, *line)) {
-            positions->returnLine(line);
+            delete line;
             break;
         }
-
         if (line->empty() || line->front() == '@') {
-            positions->returnLine(line);
+            delete line;
             continue;
-        }
-        // limit the linePool size to save memory
-        while(positions->linePool.size() > 1000 * nThreads) {
-            this_thread::sleep_for (std::chrono::microseconds(1));
         }
         // if the SAM line is empty or unmapped, get the next SAM line.
         if (!getSAMChromosomePos(line, samChromosome, samPos)) {
-            positions->returnLine(line);
+            delete line;
             continue;
         }
         // if the samChromosome is different than current positions' chromosome, finish all SAM line.
         // then load a new reference chromosome.
         if (samChromosome != positions->chromosome) {
             // wait all line is processed
-            while (!positions->linePool.empty() || positions->outputPositionPool.size() > 100000) {
-                this_thread::sleep_for (std::chrono::microseconds(1));
-            }
             positions->appendingFinished();
             positions->moveAllToOutput();
             positions->loadNewChromosome(samChromosome);
@@ -298,9 +285,6 @@ int hisat_3n_table()
         }
         // if the samPos is larger than reloadPos, load 1 loadingBlockSize bp in from reference.
         while (samPos > reloadPos) {
-            while (!positions->linePool.empty() || positions->outputPositionPool.size() > 100000) {
-                this_thread::sleep_for (std::chrono::microseconds(1));
-            }
             positions->appendingFinished();
             positions->moveBlockToOutput();
             positions->loadMore();
@@ -310,22 +294,15 @@ int hisat_3n_table()
             cerr << "The input alignment file is not sorted. Please use sorted SAM file as alignment file." << endl;
             throw 1;
         }
-        positions->linePool.push(line);
-        positions->numTasks++;
+        tg.run([line] { positions->append(line); });
         lastPos = samPos;
     }
-    //}
+    
     if (!standardInMode) {
         inputFile.close();
     }
 
-
     // prepare to close everything.
-
-    // make sure linePool is empty
-    while (!positions->linePool.empty()) {
-        this_thread::sleep_for (std::chrono::microseconds(100));
-    }
     // make sure all workers finished their appending work.
     positions->appendingFinished();
     // move all position to outputPool
@@ -334,15 +311,7 @@ int hisat_3n_table()
     while (!positions->outputPositionPool.empty()) {
         this_thread::sleep_for (std::chrono::microseconds(100));
     }
-    // stop all thread and clean
-    while(positions->freeLinePool.popFront(line)) {
-        delete line;
-    }
     positions->working = false;
-    for (int i = 0; i < nThreads; i++){
-        workers[i]->join();
-        delete workers[i];
-    }
     outputThread.join();
     delete positions;
     return 0;

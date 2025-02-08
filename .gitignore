@@ -2,6 +2,7 @@
 *.dSYM
 *.ht2
 *.pyc
+*.sam
 *.swp
 *.zip
 .idea
@@ -12,6 +13,7 @@
 Xcode
 build
 cmake-build-*
+*-debug
 hisat-3n-table
 hisat2-align
 hisat2-align-l

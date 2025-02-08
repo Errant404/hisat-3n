@@ -27,13 +27,16 @@
 #include <mutex>
 #include <thread>
 #include <cassert>
-#include "alignment_3n_table.h"
 #include <tbb/concurrent_hash_map.h>
+#include <tbb/global_control.h>
+#include <tbb/task_group.h>
+#include "alignment_3n_table.h"
 
 using namespace std;
 
 extern bool CG_only;
 extern long long int loadingBlockSize;
+extern tbb::task_group tg;
 
 /**
  * store unique information for one base information with readID, and the quality.
@@ -189,22 +192,17 @@ public:
     string chromosome; // current reference chromosome name.
     long long int location; // current location (position) in reference chromosome.
     char lastBase = 'X'; // the last base of reference line. this is for CG_only mode.
-    SafeQueue<string*> linePool; // pool to store unprocessed SAM line.
-    SafeQueue<string*> freeLinePool; // pool to store free string pointer for SAM line.
     SafeQueue<Position*> freePositionPool; // pool to store free position pointer for reference position.
     SafeQueue<Position*> outputPositionPool; // pool to store the reference position which is loaded and ready to output.
     bool working;
     long long int refCoveredPosition; // this is the last position in reference chromosome we loaded in refPositions.
     ifstream refFile;
-    int nThreads = 1;
     ChromosomeFilePositions chromosomePos; // store the chromosome name and it's streamPos. To quickly find new chromosome in file.
     bool addedChrName = false;
     bool removedChrName = false;
-    atomic_size_t numTasks {0};
 
-    Positions(string inputRefFileName, int inputNThreads, bool inputAddedChrName, bool inputRemovedChrName) {
+    Positions(string inputRefFileName, bool inputAddedChrName, bool inputRemovedChrName) {
         working = true;
-        nThreads = inputNThreads;
         addedChrName = inputAddedChrName;
         removedChrName = inputRemovedChrName;
         refFile.open(inputRefFileName, ios_base::in);
@@ -260,7 +258,9 @@ public:
     void LoadChromosomeNamesPos() {
         string line;
         while (refFile.good()) {
-            getline(refFile, line);
+            if (!getline(refFile, line)) {
+                break;
+            }
             if (line.front() == '>') { // this line is chromosome name
                 chromosome = getChrName(line);
                 streampos currentPos = refFile.tellg();
@@ -301,7 +301,7 @@ public:
     }
 
     void appendingFinished() {
-        while (numTasks) {}
+        tg.wait();
     }
 
     /**
@@ -465,17 +465,6 @@ public:
     }
 
     /**
-     * get a string pointer from freeLinePool, if freeLinePool is empty, make a new string pointer.
-     */
-    void getFreeStringPointer(string*& newLine) {
-        if (freeLinePool.popFront(newLine)) {
-            return;
-        } else {
-            newLine = new string();
-        }
-    }
-
-    /**
      * get a Position pointer from freePositionPool, if freePositionPool is empty, make a new Position pointer.
      */
     void getFreePosition(Position*& newPosition) {
@@ -490,14 +479,6 @@ public:
     }
 
     /**
-     * return the line to freeLinePool
-     */
-    void returnLine(string* line) {
-        line->clear();
-        freeLinePool.push(line);
-    }
-
-    /**
      * return the position to freePositionPool.
      */
     void returnPosition(Position* pos) {
@@ -509,23 +490,14 @@ public:
      * this is the working function.
      * it take the SAM line from linePool, parse it.
      */
-    void append(int threadID) {
-        string* line;
+    void append(string* line) {
         Alignment newAlignment;
-
-        while (working) {
-            if(!linePool.popFront(line)) {
-                this_thread::sleep_for (std::chrono::nanoseconds(1));
-                continue;
-            }
-            while (refPositions.empty()) {
-                this_thread::sleep_for (std::chrono::microseconds(1));
-            }
-            newAlignment.parse(line);
-            returnLine(line);
-            appendPositions(newAlignment);
-            numTasks--;
+        while (refPositions.empty()) {
+            this_thread::sleep_for (std::chrono::microseconds(1));
         }
+        newAlignment.parse(line);
+        delete line;
+        appendPositions(newAlignment);
     }
 };
 
