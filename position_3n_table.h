@@ -21,6 +21,7 @@
 #define POSITION_3N_TABLE_H
 
 #include <iostream>
+#include <oneapi/tbb/concurrent_vector.h>
 #include <string>
 #include <vector>
 #include <fstream>
@@ -100,6 +101,10 @@ public:
     Position(){
         initialize();
     };
+
+    ~Position() {
+        uniqueIDs.clear();
+    }
 
     /**
      * return true if there is mapping information in this reference position.
@@ -191,7 +196,6 @@ public:
     vector<Position*> refPositions; // the pool of all current reference position.
     string chromosome; // current reference chromosome name.
     long long int location; // current location (position) in reference chromosome.
-    SafeQueue<Position*> freePositionPool; // pool to store free position pointer for reference position.
     SafeQueue<Position*> outputPositionPool; // pool to store the reference position which is loaded and ready to output.
     bool working;
     long long int refCoveredPosition; // this is the last position in reference chromosome we loaded in refPositions.
@@ -209,10 +213,6 @@ public:
     }
 
     ~Positions() {
-        Position* pos;
-        while(freePositionPool.popFront(pos)) {
-            delete pos;
-        }
     }
 
     /**
@@ -341,21 +341,37 @@ public:
         if (refPositions.empty()) {
             return;
         }
-        int index;
-        for (index = 0; index < refPositions.size(); index++) {
-            if (refPositions[index]->location < refCoveredPosition - loadingBlockSize) {
-                if (refPositions[index]->empty() || refPositions[index]->strand == '?') {
-                    returnPosition(refPositions[index]);
-                } else {
-                    outputPositionPool.push(refPositions[index]);
-                }
+
+        // Find the split point
+        auto splitPoint = std::lower_bound(refPositions.begin(), refPositions.end(), 
+            refCoveredPosition - loadingBlockSize,
+            [](const Position* pos, long long int value) {
+                return pos->location < value;
+            });
+        
+        int count = std::distance(refPositions.begin(), splitPoint);
+        if (count == 0) return;
+
+        tbb::concurrent_vector<Position*> tempOutputPool;
+
+        // Process positions in parallel
+        #pragma vector
+        for (size_t i = 0; i < count; ++i) {
+            if (refPositions[i]->empty() || refPositions[i]->strand == '?') {
+                returnPosition(refPositions[i]);
             } else {
-                break;
+                tempOutputPool.push_back(refPositions[i]);
             }
         }
-        if (index != 0) {
-            refPositions.erase(refPositions.begin(), refPositions.begin()+index);
+        std::sort(tempOutputPool.begin(), tempOutputPool.end(), 
+            [](const Position* a, const Position* b) {
+                return a->location < b->location;
+            });
+        for (auto pos : tempOutputPool) {
+            outputPositionPool.push(pos);
         }
+        // Erase processed positions
+        refPositions.erase(refPositions.begin(), splitPoint);
     }
 
     /**
@@ -365,13 +381,21 @@ public:
         if (refPositions.empty()) {
             return;
         }
+        tbb::concurrent_vector<Position*> tempOutputPool;
+        #pragma vector
         for (int index = 0; index < refPositions.size(); index++) {
             if (refPositions[index]->empty() || refPositions[index]->strand == '?') {
                 returnPosition(refPositions[index]);
             } else {
-                refPositions[index]->uniqueIDs.clear();
-                outputPositionPool.push(refPositions[index]);
+                tempOutputPool.push_back(refPositions[index]);
             }
+        }
+        std::sort(tempOutputPool.begin(), tempOutputPool.end(), 
+            [](const Position* a, const Position* b) {
+                return a->location < b->location;
+            });
+        for (auto pos : tempOutputPool) {
+            outputPositionPool.push(pos);
         }
         refPositions.clear();
     }
