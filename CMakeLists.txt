@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.23.5)
 project(hisat-3n)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
@@ -23,17 +23,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall")
 
 # Debug/Release Flag
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -funroll-loops")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fast -xHost")
 
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-mavx2" COMPILER_SUPPORTS_AVX2)
-
-if (COMPILER_SUPPORTS_AVX2)
-	add_definitions(-DSSE_AVX2)
-    add_compile_options(-mavx2 -faligned-new)
-else ()
-	add_compile_options(-msse2)
-endif()
+find_package(IntelSYCL REQUIRED)
 
 set(INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation directory for executables")
 
