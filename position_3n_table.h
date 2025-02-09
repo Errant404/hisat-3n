@@ -191,7 +191,6 @@ public:
     vector<Position*> refPositions; // the pool of all current reference position.
     string chromosome; // current reference chromosome name.
     long long int location; // current location (position) in reference chromosome.
-    char lastBase = 'X'; // the last base of reference line. this is for CG_only mode.
     SafeQueue<Position*> freePositionPool; // pool to store free position pointer for reference position.
     SafeQueue<Position*> outputPositionPool; // pool to store the reference position which is loaded and ready to output.
     bool working;
@@ -275,28 +274,28 @@ public:
      * get a fasta line (not header), append the bases to positions.
      */
     void appendRefPosition(string& line) {
-        Position* newPos;
-        // check the base one by one
-        char* b;
-        for (int i = 0; i < line.size(); i++) {
+        size_t startIndex = refPositions.size();
+        refPositions.resize(startIndex + line.size());
+        #pragma vector
+        for (size_t i=0; i<line.size(); ++i) {    
+            char base = std::toupper(line[i]);
+            Position* newPos;
             getFreePosition(newPos);
             newPos->set(chromosome, location+i);
-            b = &line[i];
             if (CG_only) {
-                if (lastBase == 'C' && *b == 'G') {
-                    refPositions.back()->set('+');
+                if (i > 0 && line[i - 1] == 'C' && base == 'G') {
+                    refPositions[startIndex + i - 1]->set('+');
                     newPos->set('-');
                 }
             } else {
-                if (*b == convertFrom) {
+                if (base == convertFrom) {
                     newPos->set('+');
-                } else if (*b == convertFromComplement) {
+                } else if (base == convertFromComplement) {
                     newPos->set('-');
                 }
             }
-            refPositions.push_back(newPos);
-            lastBase = *b;
-        }
+            refPositions[startIndex + i] = newPos;
+        };
         location += line.size();
     }
 
@@ -388,7 +387,6 @@ public:
         refFile.seekg(startPos, ios::beg);
         refCoveredPosition = 2 * loadingBlockSize;
         string line;
-        lastBase = 'X';
         location = 0;
         while (refFile.good()) {
             getline(refFile, line);
@@ -396,10 +394,6 @@ public:
                 return; // meet next chromosome, return it.
             } else {
                 if (line.empty()) { continue; }
-                // change all base to upper case
-                for (int i = 0; i < line.size(); i++) {
-                    line[i] = toupper(line[i]);
-                }
                 appendRefPosition(line);
                 if (location >= refCoveredPosition) {
                     return;
@@ -421,12 +415,6 @@ public:
                 return ;
             } else {
                 if (line.empty()) { continue; }
-
-                // change all base to upper case
-                for (int i = 0; i < line.size(); i++) {
-                    line[i] = toupper(line[i]);
-                }
-
                 appendRefPosition(line);
                 if (location >= refCoveredPosition) {
                     return ;
@@ -468,22 +456,14 @@ public:
      * get a Position pointer from freePositionPool, if freePositionPool is empty, make a new Position pointer.
      */
     void getFreePosition(Position*& newPosition) {
-        while (outputPositionPool.size() >= 10000) {
-            this_thread::sleep_for (std::chrono::microseconds(1));
-        }
-        if (freePositionPool.popFront(newPosition)) {
-            return;
-        } else {
-            newPosition = new Position();
-        }
+        newPosition = new Position();
     }
 
     /**
      * return the position to freePositionPool.
      */
     void returnPosition(Position* pos) {
-        pos->initialize();
-        freePositionPool.push(pos);
+        delete pos;
     }
 
     /**
@@ -502,3 +482,4 @@ public:
 };
 
 #endif //POSITION_3N_TABLE_H
+ 
