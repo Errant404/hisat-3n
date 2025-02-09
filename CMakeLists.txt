@@ -19,7 +19,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS on)
 set(NCBI_NGS_DIR ${NCBI_NGS_DIR})
 
 # Common Flag
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -g3 -Wall")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -Wall -g3")
 
 # Debug/Release Flag
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
@@ -169,21 +169,22 @@ add_definitions(
 
 include_directories(${SOURCE_DIR}/third_party)
 
-if(NOT NO_TBB)
-  find_package(TBB REQUIRED)
-  link_libraries(TBB::tbb)
-  add_definitions(-DWITH_TBB)
+find_package(TBB REQUIRED)
+link_libraries(TBB::tbb)
+add_definitions(-DWITH_TBB)
+
+if (NOT NO_NUMA)
+  add_definitions(-DWITH_AFFINITY)
 endif()
 
 find_package(Threads REQUIRED)
 link_libraries(Threads::Threads)
 
+find_package(mimalloc 2.1 REQUIRED)
+link_libraries(mimalloc)
+
 if (NO_SPINLOCK)
   add_definitions(-DNO_SPINLOCK)
-endif()
-
-if (WITH_AFFINITY)
-  add_definitions(-DWITH_AFFINITY)
 endif()
 
 if (NOT NO_QUEUELOCK)
