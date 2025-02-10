@@ -18,10 +18,16 @@ set(CMAKE_VERBOSE_MAKEFILE true)
 set(CMAKE_EXPORT_COMPILE_COMMANDS on)
 set(NCBI_NGS_DIR ${NCBI_NGS_DIR})
 
-if(DEFINED ENV{CONDA_PREFIX})
+find_path(HTSLIB_PATH NAMES htslib PATHS ../)
+if (HTSLIB_PATH)
+	include_directories(${HTSLIB_PATH}/htslib)
+	link_directories(${HTSLIB_PATH}/htslib)
+	message(STATUS "htslib found at ${HTSLIB_PATH}/htslib")
+elseif(DEFINED ENV{CONDA_PREFIX})
 	set(CONDA_PREFIX $ENV{CONDA_PREFIX})
 	include_directories(${CONDA_PREFIX}/include)
 	link_directories(${CONDA_PREFIX}/lib)
+	message(STATUS "htslib found at ${CONDA_PREFIX}/lib")
 endif()
 
 # Common Flag
