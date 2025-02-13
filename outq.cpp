@@ -19,10 +19,7 @@
 
 #include "outq.h"
 
-/**
- * Caller is telling us that they're about to write output record(s) for
- * the read with the given id.
- */
+// beginRead：记录将要写入的读 id，并在 reorder 模式下扩展内部数组
 void OutputQueue::beginRead(TReadId rdid, size_t threadId) {
 	ThreadSafe t(&mutex_m, threadSafe_);
 	nstarted_++;
@@ -31,7 +28,7 @@ void OutputQueue::beginRead(TReadId rdid, size_t threadId) {
 		assert_eq(lines_.size(), finished_.size());
 		assert_eq(lines_.size(), started_.size());
 		if(rdid - cur_ >= lines_.size()) {
-			// Make sure there's enough room in lines_, started_ and finished_
+			// 扩展内部数组以确保能够存储当前读 id 的记录
 			size_t oldsz = lines_.size();
 			lines_.resize(rdid - cur_ + 1);
 			started_.resize(rdid - cur_ + 1);
@@ -45,12 +42,12 @@ void OutputQueue::beginRead(TReadId rdid, size_t threadId) {
 	}
 }
 
-/**
- * Writer is finished writing to 
- */
+// finishRead：完成当前读记录的写入
+// 在 reorder 模式下，将记录存入内部数组；否则推入异步队列。
+// 然后通过条件变量通知后台输出线程刷新数据。
 void OutputQueue::finishRead(const BTString& rec, TReadId rdid, size_t threadId) {
-	ThreadSafe t(&mutex_m, threadSafe_);
 	if(reorder_) {
+		ThreadSafe t(&mutex_m, threadSafe_);
 		assert_geq(rdid, cur_);
 		assert_eq(lines_.size(), finished_.size());
 		assert_eq(lines_.size(), started_.size());
@@ -60,43 +57,67 @@ void OutputQueue::finishRead(const BTString& rec, TReadId rdid, size_t threadId)
 		lines_[rdid - cur_] = rec;
 		nfinished_++;
 		finished_[rdid - cur_] = true;
-		flush(false, false); // don't force; already have lock
 	} else {
-		// obuf_ is the OutFileBuf for the output file
-		obuf_.writeString(rec);
+		// 非排序模式：将记录推入异步队列，不直接写出
+		{
+			std::unique_lock<std::mutex> lock(asyncMutex_);
+			asyncQueue_.push(rec);
+		}
 		nfinished_++;
-		nflushed_++;
+	}
+	cv_.notify_one();
+}
+
+// flush：将缓冲中的记录写出到 obuf_
+// 对于非排序模式，从 asyncQueue_ 中取出所有记录；
+// 对于排序模式，依次写出连续的完成记录（达到阈值或强制刷新时）
+void OutputQueue::flush(bool force, bool getLock) {
+	if (!reorder_) {
+		// 非排序模式：刷新异步队列
+		std::unique_lock<std::mutex> lock(asyncMutex_);
+		while(!asyncQueue_.empty()) {
+			BTString rec = asyncQueue_.front();
+			asyncQueue_.pop();
+			obuf_.writeString(rec);
+			nflushed_++;
+		}
+	} else {
+		// 排序模式：获取 mutex_m 后检查连续完成的记录
+		ThreadSafe t(&mutex_m, getLock && threadSafe_);
+		size_t nflush = 0;
+		while(nflush < finished_.size() && finished_[nflush]) {
+			nflush++;
+		}
+		if(force || nflush >= NFLUSH_THRESH) {
+			for(size_t i = 0; i < nflush; i++) {
+				obuf_.writeString(lines_[i]);
+			}
+			// 擦除已写出的记录，更新当前读 id
+			lines_.erase(0, nflush);
+			started_.erase(0, nflush);
+			finished_.erase(0, nflush);
+			cur_ += nflush;
+			nflushed_ += nflush;
+		}
 	}
 }
 
-/**
- * Write already-finished lines starting from cur_.
- */
-void OutputQueue::flush(bool force, bool getLock) {
-	if(!reorder_) {
-		return;
-	}
-	ThreadSafe t(&mutex_m, getLock && threadSafe_);
-	size_t nflush = 0;
-	while(nflush < finished_.size() && finished_[nflush]) {
-		assert(started_[nflush]);
-		nflush++;
-	}
-	// Waiting until we have several in a row to flush cuts down on copies
-	// (but requires more buffering)
-	if(force || nflush >= NFLUSH_THRESH) {
-		for(size_t i = 0; i < nflush; i++) {
-			assert(started_[i]);
-			assert(finished_[i]);
-			obuf_.writeString(lines_[i]);
+// asyncOutputThread：后台输出线程
+// 线程循环等待条件变量通知或超时，然后调用 flush() 将缓冲数据写出。
+// 当 shutdown_ 标志为 true 时退出循环，并进行最后一次刷新。
+void OutputQueue::asyncOutputThread() {
+	while (true) {
+		{
+			std::unique_lock<std::mutex> lock(cv_mutex_);
+			cv_.wait_for(lock, std::chrono::milliseconds(50), [this](){ return shutdown_; });
+			if(shutdown_)
+				break;
 		}
-		lines_.erase(0, nflush);
-		started_.erase(0, nflush);
-		finished_.erase(0, nflush);
-		cur_ += nflush;
-		nflushed_ += nflush;
+		flush(true, true);
 	}
-}
+	// 退出前进行最后一次刷新
+	flush(true, true);
+} 
 
 #ifdef OUTQ_MAIN
 
