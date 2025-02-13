@@ -100,6 +100,7 @@ static bool noRefNames;   // true -> print reference indexes; not names
 static uint32_t khits;    // number of hits per read; >1 is much slower
 static uint32_t mhits;    // don't report any hits if there are > mhits
 static int partitionSz;   // output a partitioning key in first field
+static int readsPerBatchOutput; // # of reads to store for output at once
 static bool useSpinlock;  // false -> don't use of spinlocks even if they're #defines
 static bool fileParallel; // separate threads read separate input files in parallel
 static bool useShmem;     // use shared memory to hold the index
@@ -366,6 +367,7 @@ static void resetOptions() {
 	khits					= 10;    // number of hits per read; >1 is much slower
 	mhits					= 0;     // stop after finding this many alignments+1
 	partitionSz				= 0;     // output a partitioning key in first field
+	readsPerBatchOutput		= 512;   // # reads to store until we flush per-thread output buffer
 	useSpinlock				= true;  // false -> don't use of spinlocks even if they're #defines
 	fileParallel			= false; // separate threads read separate input files in parallel
 	useShmem				= false; // use shared memory to hold the index
@@ -1459,6 +1461,9 @@ static void parseOption(int next_option, const char *arg) {
 			break;
 		}
 		case ARG_PARTITION: partitionSz = parse<int>(arg); break;
+		case ARG_READS_PER_OUT_BATCH:
+			readsPerBatchOutput = parseInt(1, "--reads-per-out-batch arg must be at least 1", arg);
+			break;
 		case ARG_DPAD:
 			maxhalf = parseInt(0, "--dpad must be no less than 0", arg);
 			break;
@@ -4363,8 +4368,9 @@ static void driver(
 	OutputQueue oq(
 		*fout,                   // out file buffer
 		reorder && nthreads > 1, // whether to reorder when there's >1 thread
-		nthreads,                // # threads
+		nthreads+1,                // # threads
 		nthreads > 1,            // whether to be thread-safe
+		readsPerBatchOutput,     // size of output buffer of reads 
 		skipReads);              // first read will have this rdid
 	{
 		Timer _t(cerr, "Time searching: ", timing);
