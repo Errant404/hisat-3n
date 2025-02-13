@@ -57,14 +57,13 @@ public:
 		reorder_(reorder),
 		threadSafe_(threadSafe),
 		mutex_m(),
-        nthreads_(nthreads),
+		nthreads_(nthreads),
 		perThreadBufSize_(perThreadBufSize)
 	{
 		nstarted_=0;
 		assert(nthreads_ <= 2 || threadSafe);
 		if(!reorder)
 		{
-			fprintf(stderr,"perThreadBufSize for output is %d\n",perThreadBufSize_);
 			perThreadBuf = new BTString*[nthreads_];
 			perThreadCounter = new int[nthreads_];
 			size_t i = 0;
@@ -76,7 +75,13 @@ public:
 		}
 	}
 
-	~OutputQueue() { }
+	~OutputQueue() {
+		for (size_t i = 0; i < nthreads_; i++) {
+			delete[] perThreadBuf[i];
+		}
+		delete[] perThreadBuf;
+		delete[] perThreadCounter;
+	}
 
 	/**
 	 * Caller is telling us that they're about to write output record(s) for
@@ -138,9 +143,15 @@ protected:
 
 	// used for output read buffer	
 	size_t nthreads_;
-	BTString**	perThreadBuf;
+	BTString** perThreadBuf;
 	int* 		perThreadCounter;
 	int perThreadBufSize_;
+
+private:
+
+	void flushImpl(bool force);
+	void beginReadImpl(TReadId rdid, size_t threadId);
+	void finishReadImpl(const BTString& rec, TReadId rdid, size_t threadId);
 };
 
 class OutputQueueMark {
