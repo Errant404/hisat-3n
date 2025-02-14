@@ -28,6 +28,7 @@
 #include <math.h>
 #include <utility>
 #include <limits>
+#include <omp.h>
 #include "alphabet.h"
 #include "assert_helpers.h"
 #include "endian_swap.h"
@@ -3946,9 +3947,6 @@ static void multiseedSearch(
         multiseed_rgfm         = rgfm;
         multiseed_rrefs        = rrefs;
 	}
-
-	AutoArray<std::thread*> threads(nthreads);
-	AutoArray<int> tids(nthreads);	
 	// Start the metrics thread
 	{
 		Timer _t(cerr, "Multiseed full-index search: ", timing);
@@ -3956,14 +3954,11 @@ static void multiseedSearch(
         thread_rids.resize(nthreads);
         thread_rids.fill(0);
         thread_rids_mindist = (nthreads == 1 || !useTempSpliceSite ? 0 : 1000 * nthreads);
-		for(int i = 0; i < nthreads; i++) {
-			// Thread IDs start at 1
-			tids[i] = i+1;
-            threads[i] = new std::thread(multiseedSearchWorker_hisat2, (void*)&tids[i]);
+		#pragma omp parallel num_threads(nthreads)
+		{
+			int tid = omp_get_thread_num() + 1; // Thread IDs start at 1
+			multiseedSearchWorker_hisat2((void*)&tid);
 		}
-
-        for (int i = 0; i < nthreads; i++)
-            threads[i]->join();
 
 	}
 	if(!metricsPerRead && (metricsOfb != NULL || metricsStderr)) {
