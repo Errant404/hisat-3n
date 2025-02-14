@@ -191,6 +191,9 @@ find_package(TBB REQUIRED)
 link_libraries(TBB::tbb)
 add_definitions(-DWITH_TBB)
 
+find_package(OpenMP REQUIRED)
+link_libraries(OpenMP::OpenMP_CXX)
+
 find_package(Threads REQUIRED)
 link_libraries(Threads::Threads)
 
